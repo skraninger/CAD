@@ -1,0 +1,90 @@
+Midi Pedal Software Design
+
+Unique features:
+	button down and button up have their own event specification
+	a button down or up can change the bank assigned
+	
+Settings are per bank, per pedal, button down, button up
+For an analog (volume) pedal, the event is any value change
+
+Button Press reads a 0 on the pin
+Button Up reads a 1 on the pin
+Button DOWN is 1->0
+Button UP is 0->1
+
+For buttons -
+Note On: "ON", note, velocity, channel, bank
+Note Off: "OFF", note, velocity, channel, bank
+Button: "CC" cc, value, toggle, channel, bank (toggle of 0xFF=na)
+Analog Pedal: "CCR", cc, value, toggle, channel, bank (value=highest value, toggle=lowest value )
+Program Change: "PC", pc, value, toggle, channel, bank (value, toggle not used)
+Start: "STA", value, toggle, channel, bank (value, toggle, channel not used) 
+Stop: "STO, value, toggle, channel, bank (value, toggle, channel not used)
+Continue: "CONT", value, toggle, channel, bank (value, toggle, channel not used)
+Reset: "RE", value, toggle, channel, bank (value, toggle, channel not used)
+Bank Change: "BC", value, toggle, channel, bank (no midi is sent, only the bank is changed) 
+Nothing: "NA", value, toggle, channel, bank (no midi is sent, no bank change) 
+
+
+Bank Change should only be active on the "UP" pedal transition (0->1)
+	and should reset any toggle actions
+	
+If bank is set, a bank change is triggered -
+Bank Change: number, 0x00=no change, 0x01-0x7F=set, 0x80=decriment, 0x81=increment
+Bank Change can be in addition to midi function
+Bank Change number = 0 means no bank change
+Bank Change number > 0 means change to bank #value 
+Bank Change number = 128 decriment bank and change
+Bank Change number = 129 increment bank and change
+
+The maximum number of banks will be determined when the json is loaded
+
+For an analog pedal -
+CC Range: cc, low, high (for Expression Pedal)
+
+Variable usage:
+
+Indexes are assigned to midi event values
+KIND = 0
+VALUE = 1
+TOGGLE = 2
+VELOCITY = 3
+CHANNEL = 4
+SETBANK = 5
+
+bank = 0
+pedal = 0
+onoff = 0 (ON)
+midi_pedal(bank)(pedal)(onoff)(KIND) ("ON","OFF", "CC", "CCR", "PC", "STA", "STO", "CONT", "RE", "BC", "NA")
+midi_pedal(bank)(pedal)(onoff)(VALUE) 0-127
+midi_pedal(bank)(pedal)(onoff)(TOGGLE) 0-127&255 (255 = No toggle)
+midi_pedal(bank)(pedal)(onoff)(VELOCITY) 0-127
+midi_pedal(bank)(pedal)(onoff)(CHANNEL) 0-15
+midi_pedal(bank)(pedal)(onoff)(BANK) 1-127, 0=no change, 128=decriment, 129=increment
+
+Funtions:
+
+Pedal state will be kept in an array, could be a simple count, odd = on, even = off
+	pedal_state(n)
+
+When a button is pressed it will send the message associated with the current bank and pedal
+
+The maximum number of banks will be determined when the midi_pedal tuple is loaded
+
+Extra Functions
+
+Panic = everything off
+
+A MIDI panic reset (or "All Notes Off" command) is most often sent to stop stuck notes
+ by sending a specific MIDI Control Change message,
+ usually CC#123 (All Notes Off) or CC#120 (All Sound Off) on all 16 MIDI channels. 
+
+Could add
+	multiple pedal values (two down at once)
+	double click pedal
+	long press pedal
+
+LED behavior
+When a bank is assigned, the LED of the bank will be on for a time, all others will be off.
+	then the toggle LED values will be reset
+When a toggle is assigned and toggled on, the LED of the button will be on.

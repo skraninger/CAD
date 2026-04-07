@@ -1,0 +1,53 @@
+[ //Top: General Format:KIND, VALUE, ONVEL, OFFVEL, CHANNEL
+  //Note On/Off		NOTE	note#,	on vel,		off vel,	channel
+  //CC Digital:		CC		cc#,	on vel,		off vel,	channel
+  //CC Analog:		CA		cc#,	high val,	low val,	channel 
+  //CC Toggle:		CT		cc#,	on vel,		off vel,	channel 
+  //Progam Change:	PC		prog#	NA,			NA,			channel
+  //Transport:		TR 		type,	NA,			NA,			channel
+  //Bank Change:	BC		bank#,	NA,			NA,			NA
+[ //Bank 1
+	[ "NOTE", 1, 127,  0, 0],
+	[ "NOTE", 2, 127,  0, 0],
+	[ "NOTE", 3, 127,  0, 0],
+	[ "NOTE", 4, 127,  0, 0],
+	[ "CC",   21, 127, 0, 0],
+	[ "CT",   22, 127, 0, 0],
+	[ "BC",   128, 0,  0, 0],
+	[ "BC",   129, 0,  0, 0],
+	[ "CA",   7,  127, 0, 0]
+],
+[ //Bank 2
+	[ "NOTE", 1, 127,  0, 1],
+	[ "NOTE", 2, 127,  0, 1],
+	[ "NOTE", 3, 127,  0, 1],
+	[ "NOTE", 4, 127,  0, 1],
+	[ "CC",   21, 127, 0, 1],
+	[ "CT",   22, 127, 0, 1],
+	[ "BC",   128, 0,  0, 0],
+	[ "BC",   129, 0,  0, 0],
+	[ "CA",   7,  127, 0, 1]
+],
+[ //Bank 3
+	[ "NOTE", 1, 127,  0, 2],
+	[ "NOTE", 2, 127,  0, 2],
+	[ "NOTE", 3, 127,  0, 2],
+	[ "NOTE", 4, 127,  0, 2],
+	[ "CC",   21, 127, 0, 2],
+	[ "CT",   22, 127, 0, 2],
+	[ "BC",   128, 0,  0, 0],
+	[ "BC",   129, 0,  0, 0],
+	[ "CA",   7,  127, 0, 2]
+],
+[ //Bank 4
+	[ "NOTE", 1, 127,  0, 3],
+	[ "NOTE", 2, 127,  0, 3],
+	[ "NOTE", 3, 127,  0, 3],
+	[ "NOTE", 4, 127,  0, 3],
+	[ "CC",   21, 127, 0, 3],
+	[ "CT",   22, 127, 0, 3],
+	[ "BC",   128, 0,  0, 0],
+	[ "BC",   129, 0,  0, 0],
+	[ "CA",   7,  127, 0, 3]
+]
+]

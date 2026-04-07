@@ -1,0 +1,172 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Feb  5 16:24:59 2026
+
+@author: skran
+"""
+
+import board
+import keypad
+import neopixel_write
+import digitalio
+import analogio
+import time
+import json
+import usb_midi
+
+import MidiPedal
+import PedalLeds
+
+
+# NEOPIXEL TEST
+
+# --- Configuration ---
+PIXEL_PIN = board.GP28
+NUM_PIXELS = 8
+COLOR = bytearray([255, 0, 0])  # Green for most pixels (G, R, B order)
+OFF = bytearray([0, 0, 0])      # No color
+DURATION = 3                    # Total run time in seconds
+CHASE_SPEED = 0.03              # Delay between movement
+
+# Initialize the pin for output
+pixelpin = digitalio.DigitalInOut(PIXEL_PIN)
+pixelpin.direction = digitalio.Direction.OUTPUT
+
+# Create a buffer for all 8 pixels (3 bytes per pixel: G, R, B)
+pixelbuffer = bytearray(NUM_PIXELS * 3)
+
+def clear_buffer():
+    for i in range(len(pixelbuffer)):
+        pixelbuffer[i] = 0
+
+def color_chase_test():
+    print("Starting color chase with neopixel_write...")
+    start_time = time.monotonic()
+
+    green = ( 255, 0, 0)
+    red = ( 0, 255, 0)
+    blue = ( 0, 0, 255)
+    colors = [green, red, blue]
+
+    j=0
+    while time.monotonic() - start_time < DURATION:
+        for i in range(NUM_PIXELS):
+
+            # Set the current pixel to red (G, R, B)
+            colorindex = j % 3
+            j=j+1
+
+            pixelbuffer[i * 3] = colors[colorindex][0]
+            pixelbuffer[i * 3 + 1] = colors[colorindex][1]
+            pixelbuffer[i * 3 + 2] = colors[colorindex][2]
+            
+            # Write the entire buffer to the pin
+            neopixel_write.neopixel_write(pixelpin, pixelbuffer)
+            
+            time.sleep(CHASE_SPEED)
+            
+            if time.monotonic() - start_time >= DURATION:
+                break
+
+    # Turn off all pixels when finished
+    clear_buffer()
+    neopixel_write.neopixel_write(pixelpin, pixelbuffer)
+    print("Neopixels Done!")
+
+color_chase_test()
+
+# KEYPAD NEOPIXEL TEST
+
+keys = keypad.Keys(
+    (board.GP2, board.GP3, board.GP4, board.GP5, 
+     board.GP6, board.GP7, board.GP8, board.GP9),
+    value_when_pressed=False,
+    pull=True
+)
+
+# 1. MIDI Setup
+# usb_midi.ports[1] is the MIDI OUT port
+midi_out = usb_midi.ports[1]
+
+# C0 is MIDI index 12
+START_NOTE = 12
+
+def button_test():
+    print("System Ready: Press a button to light a pixel.")
+
+    while True:
+        # Check for button events
+        event = keys.events.get()
+        
+        if event:
+            print(f"Button {event.key_number} {'pressed' if event.pressed else 'released'}")
+            note = START_NOTE + event.key_number
+            # event.key_number corresponds to the index in our pin list (0-7)
+            # Each pixel uses 3 bytes in the buffer
+            if (0 <= event.key_number < 4):
+                pixel_index = event.key_number * 3
+            else:
+                pixel_index = (11 - event.key_number) * 3
+                    
+            if event.pressed:
+                # Set pixel to Red (Order is Green, Red, Blue)
+                pixelbuffer[pixel_index] = 0    # Green
+                pixelbuffer[pixel_index + 1] = 50 # Red (Brightness 50/255)
+                pixelbuffer[pixel_index + 2] = 0    # Blue
+                midi_out.write(bytearray([0x90, note, 120]))            
+            if event.released:
+                # Turn pixel off
+                pixelbuffer[pixel_index] = 0
+                pixelbuffer[pixel_index + 1] = 0
+                pixelbuffer[pixel_index + 2] = 0
+                midi_out.write(bytearray([0x80, note, 0]))
+
+            # Send the updated buffer to the physical LEDs
+            neopixel_write.neopixel_write(pixelpin, pixelbuffer)
+
+#button_test()
+
+# VOLUME PEDAL TEST
+
+# 1. Initialize the analog input on GP26 (A0)
+analog_in = analogio.AnalogIn(board.A0)
+
+# 2. Function to scale/map values
+def map_value(value, in_min, in_max, out_min, out_max):
+    return int((value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
+
+def analog_to_midi_cc():
+    print("Starting Analog to MIDI CC conversion...")
+
+    cc_value = -1
+    last_cc_value = -1
+    last_raw_value = -1
+
+    while True:
+        # Read raw 16-bit value (0-65535)
+        raw_value = analog_in.value
+        
+        # Map to MIDI CC range (0-127)
+        # We use 65520 instead of 65535 to account for slight electrical noise
+        cc_value = map_value(raw_value, 0, 65520, 0, 127)
+        
+        # Clamp the value to ensure it stays within 0-127
+        cc_value = max(0, min(127, cc_value))
+        
+        # Only print if the value has changed to avoid flooding the console
+        #if cc_value != last_cc_value:
+        if cc_value != last_cc_value:
+            print(f"Analog: {raw_value:5d} | MIDI CC 7: {cc_value:3d}")
+            last_cc_value = cc_value
+            last_raw_value = raw_value
+            
+        time.sleep(0.1) # Small delay for stability
+
+#analog_to_midi_cc()
+
+PEDALMAXVALUE = 65535
+
+file_path = "midibanks.json"
+
+pedalbanks = MidiPedal.midipedalbanks(file_path)
+

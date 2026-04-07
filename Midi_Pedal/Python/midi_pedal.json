@@ -1,0 +1,730 @@
+[
+    [
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 1,
+                "tog": 255,
+                "vel": 127,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 1,
+                "tog": 255,
+                "vel": 0,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 2,
+                "tog": 255,
+                "vel": 127,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 2,
+                "tog": 255,
+                "vel": 0,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 3,
+                "tog": 255,
+                "vel": 127,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 3,
+                "tog": 255,
+                "vel": 0,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 4,
+                "tog": 255,
+                "vel": 127,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 4,
+                "tog": 255,
+                "vel": 0,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 5,
+                "tog": 255,
+                "vel": 127,
+                "ch": 1,
+                "bank": 1,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 5,
+                "tog": 255,
+                "vel": 0,
+                "ch": 1,
+                "bank": 1,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 6,
+                "tog": 255,
+                "vel": 127,
+                "ch": 1,
+                "bank": 2,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 6,
+                "tog": 255,
+                "vel": 0,
+                "ch": 1,
+                "bank": 2,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 7,
+                "tog": 255,
+                "vel": 127,
+                "ch": 1,
+                "bank": 3,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 7,
+                "tog": 255,
+                "vel": 0,
+                "ch": 1,
+                "bank": 3,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "CCR",
+                "val": 7,
+                "tog": 127,
+                "vel": 0,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "CCR",
+                "val": 7,
+                "tog": 127,
+                "vel": 0,
+                "ch": 1,
+                "bank": 0,
+                "state": 0
+            }
+        ]
+    ],
+    [
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 2,
+                "bank": 1,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 2,
+                "bank": 1,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 2,
+                "bank": 2,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 2,
+                "bank": 2,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 2,
+                "bank": 3,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 2,
+                "bank": 3,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "CCR",
+                "val": 7,
+                "tog": 127,
+                "vel": 0,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "CCR",
+                "val": 7,
+                "tog": 127,
+                "vel": 0,
+                "ch": 2,
+                "bank": 0,
+                "state": 0
+            }
+        ]
+    ],
+    [
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 3,
+                "bank": 1,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 3,
+                "bank": 1,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 3,
+                "bank": 2,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 3,
+                "bank": 2,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 3,
+                "bank": 3,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 3,
+                "bank": 3,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "CCR",
+                "val": 7,
+                "tog": 127,
+                "vel": 0,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "CCR",
+                "val": 7,
+                "tog": 127,
+                "vel": 0,
+                "ch": 3,
+                "bank": 0,
+                "state": 0
+            }
+        ]
+    ],
+    [
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 4,
+                "bank": 1,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 4,
+                "bank": 1,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 4,
+                "bank": 2,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 4,
+                "bank": 2,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "ON",
+                "val": 0,
+                "tog": 255,
+                "vel": 127,
+                "ch": 4,
+                "bank": 3,
+                "state": 0
+            },
+            {
+                "kind": "OFF",
+                "val": 0,
+                "tog": 255,
+                "vel": 0,
+                "ch": 4,
+                "bank": 3,
+                "state": 0
+            }
+        ],
+        [
+            {
+                "kind": "CCR",
+                "val": 7,
+                "tog": 127,
+                "vel": 0,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            },
+            {
+                "kind": "CCR",
+                "val": 7,
+                "tog": 127,
+                "vel": 0,
+                "ch": 4,
+                "bank": 0,
+                "state": 0
+            }
+        ]
+    ]
+]

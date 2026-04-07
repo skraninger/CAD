@@ -1,0 +1,206 @@
+Midi Pedal Software Design
+
+Unique features:
+	button down and button up have their own event specification
+	a button down or up can change the bank assigned
+	
+Settings are per bank, per pedal, button down, button up
+For an analog (volume) pedal, the event is any value change
+
+Button Press reads a 0 on the pin
+Button Up reads a 1 on the pin
+Button DOWN is 1->0
+Button UP is 0->1
+
+For buttons -
+
+General Format	KIND	VALUE,	ONVEL,		OFFVEL,		CHANNEL
+Note On/Off		NOTE	note#,	on vel,		off vel,	channel
+CC Digital:		CC		cc#,	on vel,		off vel,	channel
+CC Analog:		CA		cc#,	high val,	low val,	channel 
+CC Toggle:		CT		cc#,	on vel,		off vel,	channel 
+Progam Change:	PC		prog#	NA,			NA,			channel
+Transport:		TR 		type,	NA,			NA,			channel
+Bank Change:	BC		bank#,	NA,			NA,			NA
+
+Transport types are:  (1=Start, 2=Stop, 3=Continue, 4=Reset)
+
+Bank Change should occur on the "UP" pedal transition (0->1)
+	and should reset any toggle actions
+	
+If bank is set, a bank change is triggered -
+Bank Change: number, 0x00=no change, 0x01-0x7F=set, 0x80=decriment, 0x81=increment
+Bank Change number = 0 means no bank change
+Bank Change number > 0 means change to bank #value 
+Bank Change number = 128 decriment bank and change
+Bank Change number = 129 increment bank and change
+
+The maximum number of banks will be determined when the json is loaded
+
+analog scaling from lowvalue (onvel) to highvalue (offvel)
+	scaled = invalue * ((highvalue - lowvalue) / maxinvalue) + lowvalue
+	maxvalue is the maxvalue of the analog io port
+Variable usage:
+
+Indexes are assigned to midi event values
+KIND = 0
+VALUE = 1
+ON = 2
+OFF = 3
+CHANNEL = 4
+
+bank = 0
+pedal = 0
+onoff = 0 (ON)
+midi_pedal(bank)(pedal)(onoff)(KIND) ("ON","OFF", "CC", "CCR", "PC", "STA", "STO", "CONT", "RE", "BC", "NA")
+midi_pedal(bank)(pedal)(onoff)(VALUE) 0-127
+midi_pedal(bank)(pedal)(onoff)(ON) 0-127&255 (255 = No toggle)
+midi_pedal(bank)(pedal)(onoff)(OFF) 0-127
+midi_pedal(bank)(pedal)(onoff)(CHANNEL) 0-15
+
+Funtions:
+
+Pedal state will be kept in an array, could be a simple count, odd = on, even = off
+	pedal_state(n)
+
+When a button is pressed it will send the message associated with the current bank and pedal
+
+The maximum number of banks will be determined when the midi_pedal tuple is loaded
+
+Extra Functions
+
+Panic = everything off
+
+A MIDI panic reset (or "All Notes Off" command) is most often sent to stop stuck notes
+ by sending a specific MIDI Control Change message,
+ usually CC#123 (All Notes Off) or CC#120 (All Sound Off) on all 16 MIDI channels. 
+
+Could add
+	multiple pedal values (two down at once)
+	double click pedal
+	long press pedal
+
+LED behavior
+When a bank is assigned, the LED of the bank will be on for a time, all others will be off.
+	then the toggle LED values will be reset
+When a toggle is assigned and toggled on, the LED of the button will be on.
+
+GLOBAL VARIABLES TO ASSIGN FROM global.json
+
+MIDI PACKET ENCODING
+//Note On/Off		NOTE	note#,	on vel,		off vel,	channel
+  //CC Digital:		CC		cc#,	on vel,		off vel,	channel
+  //CC Analog:		CA		cc#,	high val,	low val,	channel 
+  //CC Toggle:		CT		cc#,	on vel,		off vel,	channel 
+  //Progam Change:	PC		prog#	NA,			NA,			channel
+  //Transport:		TR 		type,	NA,			NA,			channel
+  //Bank Change:	BC		bank#,	NA,			NA,			NA
+[
+
+midipedal class
+
+usage 
+
+midi_in = usb_midi.ports[0]
+midi_out = usb_midi.ports[1]
+
+banks = list of midipedal banks
+pedals = list of midipedals
+pedal = midipedal object
+
+bankno = 0
+pedals = banks(bankno)
+
+while (true) ...
+if event
+	pedalno = event.no
+	pedal = pedals(pedalno)
+
+	# bankchange values are 0xFF for BANK_UP, 0xFE for BANK_DOWN, 0-n for BANK SELECT
+	if pedal.bankchange()
+		if pedal.val == BANK_UP
+			bankno = (bankno == bankmax) if 0 else bankno + 1
+		elif pedal.val == BANK_DOWN
+			bankno = (bankno == 0) if bankmax else bankno - 1
+		else
+			bankno = (pedal.val-1) % (bankmax+1)
+		pedals = banks(bankno)
+		pedals.reset_toggle()
+		leds.bankchange(bankno)
+	elif pedal.hasmidi(event.state)
+		midi_out.write(pedal.midi_out(event.state))
+			
+	leds.pedalchange(pedal)
+
+if volume.change
+	midi_out.write(pedals.CCanalog(volume.value, volume.max))
+	
+msg = midi_in.read(3)
+if msg is not None and len(msg) == 3:	
+	leds.midiin(msg)
+
+if leds.changed()
+	leds.writepixels()
+
+----
+            elif self.kind == "CA":
+                return bytes([self.statusbytes[0], self.val, 
+                              self.scaled(self.inval, self.onvel, self.offvel, max_value)])
+            elif self.kind == "CT":
+                if self.toggle():
+                    return bytes([self.statusbytes[0], self.val, self.onvel])
+                else:
+                    return bytes([self.statusbyte[0], self.val, self.offvel])                
+
+----
+
+import usb_midi
+
+# Pick the first available MIDI input port
+midi_in = usb_midi.ports[0]
+
+print("Listening for USB MIDI data...")
+
+while True:
+    # Read up to 3 bytes (the length of most standard MIDI messages)
+    # read() is non-blocking and returns None if no data is present
+    data = midi_in.read(3)
+
+    if data:
+        # Print the raw bytes in hex format for easy debugging
+        # e.g., b'\x90\x3c\x40' -> [0x90, 0x3c, 0x40]
+        print(f"Raw MIDI: {[hex(b) for b in data]}")
+		
+----
+
+import usb_midi
+import time
+
+# usb_midi.ports is a tuple of available MIDI ports
+# Typically, ports[1] is the PortOut object used to send data
+midi_out = usb_midi.ports[1]
+
+print("Sending MIDI sequence using native write()...")
+
+# 1. Middle C (Note 60) Note On
+# Status 0x90 (Note On, Ch 1), Data 0x3C (60), Velocity 0x40 (64)
+midi_out.write(bytes([0x90, 0x3C, 0x40]))
+time.sleep(1.0)
+
+# 2. Middle C (Note 60) Note Off
+# Status 0x80 (Note Off, Ch 1), Data 0x3C (60), Velocity 0x00
+midi_out.write(bytes([0x80, 0x3C, 0x00]))
+time.sleep(0.5)
+
+# 3. Program Change to Program 20
+# Status 0xC0 (Program Change, Ch 1), Data 0x13 (Index 19)
+midi_out.write(bytes([0xC0, 0x13]))
+time.sleep(0.5)
+
+# 4. Transport Stop
+# Status 0xFC (System Real-time Stop)
+midi_out.write(bytes([0xFC]))
+
+print("Done.")
+
+----------------

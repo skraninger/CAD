@@ -1,0 +1,77 @@
+{
+    "parameterSets": {
+        "Four Inch": {
+            "$fn": "100",
+            "thk": "6"
+        },
+        "Thin Bottom": {
+            "$fn": "100",
+            "Cap_OD": "120",
+            "Cap_Thickness": "2",
+            "Generate": "G",
+            "Inner_Radius": "16",
+            "Spine_Count": "26",
+            "Spine_Thickness": "2",
+            "Tube_ID": "90",
+            "Tube_Length": "35",
+            "Tube_OD": "99",
+            "Zscale": "0.6"
+        },
+        "Vertical Cutout": {
+            "$fn": "100",
+            "Bridge_Count": "1",
+            "Cap_OD": "120",
+            "Cap_Thickness": "2",
+            "Cutout_Count": "8",
+            "Generate": "G",
+            "Inner_Radius": "30",
+            "Inside": "C",
+            "Spine_Count": "26",
+            "Spine_Thickness": "2",
+            "Tube_ID": "90",
+            "Tube_Length": "35",
+            "Tube_OD": "99",
+            "Type": "V",
+            "Vertical_Cutout": "6.5",
+            "Zscale": "0.6"
+        },
+        "design default values": {
+            "$fn": "100",
+            "Bridge_Count": "1",
+            "Cap_OD": "120",
+            "Cap_Thickness": "2",
+            "Cutout_Count": "8",
+            "Generate": "G",
+            "Inner_Radius": "30",
+            "Inside": "C",
+            "Spine_Count": "26",
+            "Spine_Thickness": "2",
+            "Tube_ID": "90",
+            "Tube_Length": "35",
+            "Tube_OD": "99",
+            "Type": "V",
+            "Vertical_Cutout": "6.5",
+            "Zscale": "0.6"
+        },
+        "Vertical Cutout Sphere": {
+            "$fn": "100",
+            "Bridge_Count": "1",
+            "Cap_OD": "120",
+            "Cap_Thickness": "2",
+            "Cutout_Count": "8",
+            "Generate": "G",
+            "Inner_Radius": "45",
+            "Inside": "S",
+            "Spine_Count": "26",
+            "Spine_Thickness": "2",
+            "Tube_ID": "90",
+            "Tube_Length": "35",
+            "Tube_OD": "99",
+            "Type": "V",
+            "Vertical_Cutout": "6.5",
+            "Zscale": "0.6"
+        }
+    },
+    "parameterSets": "",
+    "fileFormatVersion": "1"
+}
