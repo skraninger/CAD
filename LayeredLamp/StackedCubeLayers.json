@@ -1,0 +1,15 @@
+{
+    "fileFormatVersion": "1",
+    "parameterSets": {
+        "New set 1": {
+            "layers": "40",
+            "random_range": "0.40999999999999998",
+            "slot_d": "3.5",
+            "slot_w": "11",
+            "type": "lamp",
+            "x": "50",
+            "y": "50",
+            "z": "4"
+        }
+    }
+}
