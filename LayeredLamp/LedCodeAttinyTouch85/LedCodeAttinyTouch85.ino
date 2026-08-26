@@ -1,54 +1,103 @@
 #include <Adafruit_NeoPixel.h> 
-#include <CapacitiveSensor.h>
+#include <ADCTouch.h>
 
 /*
  WS2811/Neopixel pattern switcher for ATtiny85 (and Arduino)
- Requires Adafruit NeoPixel And CapacitiveSensor
- WS2811 Signal, Digital Pin 4
- Capacitive Touch. Digital Pins 0 & 1, 1M+ Ohm resistor on 0
+ Requires Adafruit NeoPixel And ADCTouch
+ WS2811 Signal, Digital Pin 0 (PB0)
+ Capacitive Touch. ADC channel 1 (PB2)
  GPL v3
-*/
+ */
 
 // Define
 #define NUM_LEDS 4
 #define DATA_PIN 0
+#define A_TOUCH_PIN 1     // ADC1 is also PB2
 #define TOUCH_DELAY 500
-#define TOUCH_THRESH 300
+#define TOUCH_THRESH 40   // delta above baseline; adjust for pad size
 #define NUM_PATTERNS 5
 #define CTR_THRESH 16
 
 // Init Vars
 uint8_t j = 0;
 uint8_t pattern=1;
-uint8_t buttonState=0;
 uint8_t lastPix=0; 
 uint8_t myPix=0;
 uint8_t direction=1;
 uint8_t counter=0;
 uint8_t colors[3];
-uint32_t setColor=0;
 unsigned long mark;
+int baseline = 0;
+
+// Per-pattern animation state. Each pattern renders exactly one frame per
+// loop() call, so progress has to live here instead of in local loop vars.
+uint32_t scanColors[3];   // scanner: the three sweep colours
+uint8_t  scanColor = 0;   // scanner: index into scanColors
+uint8_t  scanPos   = 0;   // scanner: current pixel position
+bool     scanFwd   = true;// scanner: sweep direction
+uint8_t  wipePos   = 0;   // colorWipe: next pixel to fill
+uint32_t wipeColor = 0;   // colorWipe: colour of the current pass
+float    waveIn    = 0.0; // wavey: sine phase
 
 // Start Strip
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, DATA_PIN, NEO_GRB + NEO_KHZ800);
 
-// Touch Sensing
-CapacitiveSensor cs1 = CapacitiveSensor(4, 2);
-
 void setup() {
+    // Set ADC prescaler to 64 for a stable 125kHz clock at 8MHz
+    ADCSRA |= (1 << ADPS2) | (1 << ADPS1);
+    ADCSRA &= ~(1 << ADPS0);
+
+    // Calibrate baseline over 100 readings
+    long sum = 0;
+    for (int i = 0; i < 100; i++) {
+        sum += ADCTouch.read(A_TOUCH_PIN, 10);
+        delay(5);
+    }
+    baseline = sum / 100;
+
     strip.begin();
     strip.show(); // Initialize all pixels to 'off'
+
+    // One-time colour setup for the frame-based patterns
+    scanColors[0] = strip.Color(255, 0, 0);
+    scanColors[1] = strip.Color(200, 0, 100);
+    scanColors[2] = strip.Color(64, 0, 200);
+    wipeColor = strip.Color(random(255), random(255), random(255));
 }
 
+/*
+ * Touch handling:
+ * chkTouch() is called exactly once per loop() iteration.
+ *
+ * Originally the multi-frame patterns (scanner, colorWipe, wavey) were
+ * blocking: each ran its whole animation pass in an internal for-loop with
+ * delays before returning to loop(). A touch could only be noticed mid-pass
+ * if chkTouch() was also called inside those inner loops, so every animated
+ * frame re-polled the sensor and could break out early.
+ *
+ * The patterns are now one-frame-per-call state machines (scannerFrame,
+ * colorWipeFrame, waveyFrame), so loop() regains control between every frame
+ * and this single poll is enough. A touch resets the pattern's animation
+ * state via resetPatternState(), so the new pattern starts from the
+ * beginning - the same responsiveness the inner breaks gave before.
+ *
+ * Patterns only set pixels and return their frame delay; loop() does the
+ * one strip.show() and delay() for every pattern.
+ */
 void loop() {
-    // if button pressed, advance, set mark
-    chkTouch(cs1.capacitiveSensor(30));
-   
+    // if touched, advance pattern and restart its animation
+    if (chkTouch(ADCTouch.read(A_TOUCH_PIN, 10))) {
+        resetPatternState();
+    }
+
     // if pattern greater than #pattern reset
     if (pattern > NUM_PATTERNS) { pattern = 1; }
-    
-    // choose a pattern
-    pickPattern(pattern);
+
+    // render one frame of the current pattern, flush the strip,
+    // then wait the frame delay chosen by the pattern
+    uint8_t frameDelay = pickPattern(pattern);
+    strip.show();
+    delay(frameDelay);
 
     // set direction
     if (direction == 1) { j++;  } else {  j--; }
@@ -58,40 +107,48 @@ void loop() {
 	
 }
 
-/* pick a pattern */
-void pickPattern(uint8_t var) {
+/* render one frame of the selected pattern; returns the ms to wait
+   before the next frame */
+uint8_t pickPattern(uint8_t var) {
       switch (var) {
         case 1:
-          // scanner, color and delay - RGB
-          scanner(strip.Color(255,0,0),50);
-          scanner(strip.Color(200,0,100),50);
-          scanner(strip.Color(64,0,200),50);
-        break;
+          // scanner, bounces one pixel end to end through 3 colours
+          return scannerFrame();
         case 2:
-          // color wipe random RGB
-          colorWipe(strip.Color(random(255), random(255), random(255)),50);
-        break;
+          // color wipe random RGB, new colour each pass
+          return colorWipeFrame();
         case 3:
-          // color wave - Hue/Sat/Bright
-          // hue low (0-359), high (0-359),rate,extra delay
-          wavey(200,240,0.06,0);
-        break;
+          // color wave - hue oscillates between 200 and 240
+          return waveyFrame();
         case 4:
           // rainbow firefly, 1px at random
-          colorFirefly(60);
           counter++;
-        break;
+          return colorFirefly(60);
         case 5:
           // rainbow solid
-          rainbow(10);
           counter++;
-        break;
+          return rainbow(10);
       }
+      return 0;
+}
+
+/* restart the current pattern's animation from the beginning */
+void resetPatternState() {
+    scanColor = 0;
+    scanPos   = 0;
+    scanFwd   = true;
+    wipePos   = 0;
+    wipeColor = strip.Color(random(255), random(255), random(255));
+    waveIn    = 0.0;
+    counter   = 0;
+    myPix     = 0;
+    lastPix   = 0;
 }
 
 /* check button state */
 boolean chkTouch(int touchVal) {
-   if (touchVal > TOUCH_THRESH && (millis() - mark) > TOUCH_DELAY) {
+   int touchDelta = touchVal - baseline;
+   if (touchDelta > TOUCH_THRESH && (millis() - mark) > TOUCH_DELAY) {
        j = 0;
        mark = millis();
        pattern++;
@@ -100,188 +157,90 @@ boolean chkTouch(int touchVal) {
     else { return false; }
 }
 
-void colorFirefly(int wait) {
+uint8_t colorFirefly(int wait) {
         if(myPix != lastPix) {
           if(counter<CTR_THRESH) {
             float colorV = sin((6.28/30)*(float)(counter)) *255;
             HSVtoRGB((359/CTR_THRESH)*counter, 255, colorV, colors);
             strip.setPixelColor(myPix, colors[0], colors[1], colors[2]);
-           strip.show();
-           delay(wait);
+            return wait;
           } else {
             lastPix=myPix;
             counter=0;
-            colorFast(0,0);
+            colorFast(0);
           }
         } else {
           myPix=random(0,strip.numPixels());
         }
+        return 0;
 	
 }
 
-// Fill the dots one after the other with a color
-// Modified from Neopixel sketch to break on button press
+// Fill the dots one after the other with a color - one frame per call.
+// When the fill completes a new random colour is picked for the next pass.
+uint8_t colorWipeFrame() {
+  strip.setPixelColor(wipePos, wipeColor);
 
-void colorWipe(uint32_t c, uint8_t wait) {
-  for(uint16_t i=0; i<strip.numPixels(); i++) {
-      if(chkTouch(cs1.capacitiveSensor(30))) { break; }
-      strip.setPixelColor(i, c);
-      strip.show();
-      delay(wait);
+  if (++wipePos >= NUM_LEDS) {
+      wipePos = 0;
+      wipeColor = strip.Color(random(255), random(255), random(255));
   }
+  return 50;
 }
 
-// color wipe from center
-void colorWipeCenter(uint32_t c, uint8_t wait) {
-  uint8_t mid=strip.numPixels()/2;
-  strip.setPixelColor(mid,c);
-  for(uint16_t i=0; i<=strip.numPixels()/2; i++) {
-      if(chkTouch(cs1.capacitiveSensor(30))) { break; }
-      strip.setPixelColor(mid+i, c);
-      strip.setPixelColor(mid-i, c);
-      strip.show();
-      delay(wait);
-  }
-}
-
-// fast version 
-void colorFast(uint32_t c, uint8_t wait) {
+// fill every pixel with a colour (loop() flushes the strip)
+void colorFast(uint32_t c) {
     for (uint16_t i = 0; i < strip.numPixels(); i++) {
         strip.setPixelColor(i, c);
     }
-    strip.show();
-    delay(wait);
 }
 
-// Rainbow Cycle, modified from Neopixel sketch to break on button press
-void rainbowCycle(uint8_t wait) {
+uint8_t rainbow(uint8_t wait) {
     uint16_t i;
 
-    //  for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
-    for (i = 0; i < strip.numPixels(); i++) {
-        strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
-    }
-    strip.show();
-    delay(wait);
-    // }
-}
-
-void rainbow(uint8_t wait) {
-    uint16_t i;
-
-    //for(j=0; j<256; j++) {
     for (i = 0; i < strip.numPixels(); i++) {
         strip.setPixelColor(i, Wheel((i + j) & 255));
     }
-    strip.show();
-    delay(wait);
-    // }
+    return wait;
 }
 
-// scanner
+// scanner - one frame per call.
+// A single pixel bounces end to end; when it returns to the start the
+// colour advances through scanColors[3].
+uint8_t scannerFrame() {
+    colorFast(0);
+    strip.setPixelColor(scanPos, scanColors[scanColor]);
 
-void scanner(uint32_t c,uint8_t wait) {
-        for(int i=0; i< strip.numPixels(); i++) {
-            if(chkTouch(cs1.capacitiveSensor(30))) { break; }
-
-            colorFast(0,0);
-            strip.setPixelColor(i,c);
-            strip.show();
-            delay(wait);
+    if (scanFwd) {
+        if (scanPos >= NUM_LEDS - 1) {
+            scanFwd = false;
+        } else {
+            scanPos++;
         }
-        for(int i=strip.numPixels(); i>0; i--) {
-           if(chkTouch(cs1.capacitiveSensor(30))) { break; }
-            colorFast(0,0);
-            strip.setPixelColor(i,c);
-            strip.show();
-            delay(wait);
-        }    
+    } else {
+        if (scanPos == 0) {
+            scanColor = (scanColor + 1) % 3;
+            scanFwd = true;
+        } else {
+            scanPos--;
+        }
+    }
+    return 50;
 }
 
-// scanner to midpoint
-void bounceInOut(uint8_t num, uint8_t start,uint8_t wait) {
-  colorFast(0,0);
-  uint8_t color=200;
-  for(int q=0; q < num; q++) {
-    if(strip.numPixels()-start >= 0 && start < NUM_LEDS) {
-          strip.setPixelColor(start+q, strip.Color(0,color,0));
-          strip.setPixelColor(strip.numPixels()-start-q, strip.Color(0,color,0));
-      }   
-    color=round(color/2.0);
-    strip.show();
-    delay(wait);
-  }
-  if(counter > strip.numPixels()) { counter=0; }
-}
+// sine wave - one frame per call. Hue oscillates between 200 and 240 with
+// a phase offset per pixel; the phase advances 0.06 rad per frame.
+uint8_t waveyFrame() {
+    int diff = 240 - 200;
+    for (int i = 0; i < NUM_LEDS; i++) {
+        float out = sin(waveIn + i * (6.283 / NUM_LEDS)) * diff + 200;
+        HSVtoRGB(out, 255, 255, colors);
+        strip.setPixelColor(i, colors[0], colors[1], colors[2]);
+    }
 
-void fadeEveOdd(int c1,byte rem,uint8_t wait) {
-              for(int j=0; j < CTR_THRESH; j++) {
-                      for(int i=0; i< strip.numPixels(); i++) {
-                        if(i % 2== rem) {
-                           HSVtoRGB(c1,255,(255/CTR_THRESH)*j,colors);
-                           strip.setPixelColor(i,colors[0],colors[1],colors[2]);
-                         }
-                      }           
-                      if(chkTouch(cs1.capacitiveSensor(30))) { break; }
-                      strip.show();
-                      delay(wait);
-                }
-                for(int j=CTR_THRESH; j >= 0; j--) {
-                      for(int i=0; i< strip.numPixels(); i++) {
-                        if(i % 2== rem) {
-                           HSVtoRGB(c1,255,(255/CTR_THRESH)*j,colors);
-                           strip.setPixelColor(i,colors[0],colors[1],colors[2]);
-                         }
-                      }             
-                     if(chkTouch(cs1.capacitiveSensor(30))) { break; }
-                      strip.show();
-                      delay(wait);
-                } 
-}
-
-// twinkle random number of pixels
-void twinkleRand(int num,uint32_t c,uint32_t bg,int wait) {
-	// set background
-	 colorFast(bg,0);
-	 // for each num
-	 for (int i=0; i<num; i++) {
-	   strip.setPixelColor(random(strip.numPixels()),c);
-	 }
-	strip.show();
-	delay(wait);
-}
-
-// sine wave, low (0-359),high (0-359), rate of change, wait
-void wavey(int low,int high,float rt,uint8_t wait) {
-  float in,out;
-  int diff=high-low;
-  int step = diff/strip.numPixels();
-  for (in = 0; in < 6.283; in = in + rt) {
-       for(int i=0; i< strip.numPixels(); i++) {
-           out=sin(in+i*(6.283/strip.numPixels())) * diff + low;
-           HSVtoRGB(out,255,255,colors);
-           strip.setPixelColor(i,colors[0],colors[1],colors[2]);
-       }
-           strip.show();
-           delay(wait);
-           if(chkTouch(cs1.capacitiveSensor(30))) { break; }
-  }
-}
-
-// sine wave, intensity
-void waveIntensity(float rt,uint8_t wait) {
-  float in,level;
-  for (in = 0; in < 6.283; in = in + rt) {
-       for(int i=0; i< strip.numPixels(); i++) {
-         // sine wave, 3 offset waves make a rainbow!
-        level = sin(i+in) * 127 + 128;
-        // set color level 
-        strip.setPixelColor(i,(int)level,0,0);
-       }
-           strip.show();
-           delay(wait);
-           if(chkTouch(cs1.capacitiveSensor(30))) { break; }
-  }
+    waveIn += 0.06;
+    if (waveIn >= 6.283) { waveIn = 0; }
+    return 0; // run as fast as possible
 }
 
 // helpers 
@@ -303,7 +262,7 @@ uint32_t Wheel(byte WheelPos) {
 // hue: 0-359, sat: 0-255, val (lightness): 0-255
 // adapted from http://funkboxing.com/wordpress/?p=1366
 void HSVtoRGB(int hue, int sat, int val, uint8_t * colors) {
-    int r, g, b, base;
+    int base;
     if (sat == 0) { // Achromatic color (gray).
         colors[0] = val;
         colors[1] = val;
