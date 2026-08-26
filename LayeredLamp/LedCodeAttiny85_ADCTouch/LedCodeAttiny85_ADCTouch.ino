@@ -14,12 +14,19 @@
  */
 
 #include <Adafruit_NeoPixel.h>
+#include <ADCTouch.h>
 
 // ─── Configuration ────────────────────────────────────────────────
 
 #define NUM_PIXELS       4       // match your strip (max 16)
 #define NEO_PIN          0        // PB0
-#define TOUCH_PIN        2        // PB2
+
+#define D_TOUCH_PIN        2        // PB2
+#define A_TOUCH_PIN      1        // ADC1 is also PB2
+
+
+int baseline = 0;
+const int THRESHOLD = 40; // Adjust based on your sensor pad size
 
 const int touchThreshold = 1000;
 #define FRAME_DELAY_US   33000    // ~30 fps
@@ -119,6 +126,7 @@ void patternTwinkle()
     }
 }
 
+/*
 // Function to read capacitance on PB2 (A1) without a library
 int readCapacitivePin() {
   // 1. Charge the internal capacitor by setting PB2 high
@@ -145,13 +153,26 @@ int readCapacitivePin() {
   
   return result;
 }
+*/
 
 // ─── Setup / Loop ─────────────────────────────────────────────────
 
 void setup()
 {
-    pinMode(TOUCH_PIN, INPUT);
-    digitalWrite(TOUCH_PIN, LOW);
+    // Set ADC prescaler to 64 for a stable 125kHz clock at 8MHz
+    ADCSRA |= (1 << ADPS2) | (1 << ADPS1);
+    ADCSRA &= ~(1 << ADPS0);
+
+    // Calibrate baseline over 100 readings
+    long sum = 0;
+    for (int i = 0; i < 100; i++) {
+    sum += ADCTouch.read(A_TOUCH_PIN, 10);
+    delay(5);
+    }
+    baseline = sum / 100;
+
+    //pinMode(TOUCH_PIN, INPUT);
+    //digitalWrite(TOUCH_PIN, LOW);
 
     strip.begin();
     strip.setBrightness(60);   // 0-255, keep low to limit power
@@ -165,8 +186,10 @@ void loop()
     static uint32_t touchWasLow = 0;
     static uint32_t lastTouch = 0;
 
-    //if (touchRead() > TOUCH_THRESHOLD) {
-    if (readCapacitivePin() > touchThreshold) {
+    int currentValue = ADCTouch.read(A_TOUCH_PIN, 10);
+    int touchDelta = currentValue - baseline;
+
+    if (touchDelta > THRESHOLD) {
         if (touchWasLow > 3) {
             touchWasLow = 0;
 
