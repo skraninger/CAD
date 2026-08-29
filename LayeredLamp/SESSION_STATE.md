@@ -22,6 +22,12 @@ pad on PB2. Full docs in `README.md` (created this session). Build guide:
    Loop changes were minimal: `maxPatterns` 4 → 8 plus four new switch cases (4–7).
 2. **Compile-verified with arduino-cli** (see Build & test notes below):
    7214 / 8192 bytes flash (88 %), 139 / 512 bytes SRAM (27 %).
+3. **Added white to the TOUCH_COLOR cycle** (`LedAttinyTouchx2`): `colorIndex` is
+   now `uint16_t` with 257 steps (0–255 wheel + index 256 = white, resolved by the
+   new `baseColor()` helper used by solid/breathe/chaser). Stored across two EEPROM
+   bytes — new `ADDR_COLOR_HI` (slot 2); a 0xFF high byte from older firmware is
+   treated as unwritten so saved colours survive the update. Re-compiled:
+   7306 / 8192 B flash (89 %), 140 / 512 B SRAM (27 %).
 
 ## Build & test notes (arduino-cli)
 

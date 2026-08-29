@@ -18,7 +18,8 @@
 #define CTR_THRESH 16 // Firefly: animation frames per pixel
 
 // EEPROM Storage Addresses
-#define ADDR_COLOR 0 // Memory slot for Color index
+#define ADDR_COLOR 0 // Memory slot for Color index (low byte)
+#define ADDR_COLOR_HI 2 // Memory slot for Color index (high byte, white flag)
 #define ADDR_PATTERN 1 // Memory slot for Pattern mode
 
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -28,9 +29,10 @@ unsigned long mark;
 int baseline = 0;
 
 // State Trackers
-uint8_t colorIndex = 0;
+uint16_t colorIndex = 0; // 0-255 wheel position, 256 (maxColors-1) = white
 uint8_t patternMode = 0;
 const uint8_t maxPatterns = 8;
+const uint16_t maxColors = 257; // 256 wheel colours + white
 
 // Simple Debouncing Flags
 bool lastTouchColor = LOW;
@@ -67,12 +69,17 @@ for (int i = 0; i < 100; i++) {
 baseline = sum / 100;
 
 // 1. Read stored settings from EEPROM on boot up
-colorIndex = EEPROM.read(ADDR_COLOR);
+uint8_t colorHi = EEPROM.read(ADDR_COLOR_HI);
+if (colorHi == 0xFF) { colorHi = 0; } // high byte unwritten by older firmware
+colorIndex = ((uint16_t)colorHi << 8) | EEPROM.read(ADDR_COLOR);
 patternMode = EEPROM.read(ADDR_PATTERN);
 
 // Safety boundaries: If EEPROM is brand new, it reads 255. Reset to 0 if out of range.
 if (patternMode >= maxPatterns) {
 patternMode = 0;
+}
+if (colorIndex >= maxColors) {
+colorIndex = 0;
 }
 
 strip.begin();
@@ -88,7 +95,8 @@ void loop() {
 
     // 2. Check Color Button
     if (touchColor == HIGH && lastTouchColor == LOW) {
-        colorIndex += 15; // Cycle forward around the 256-color wheel
+        colorIndex += 15; // Cycle forward around the wheel + white
+        if (colorIndex >= maxColors) { colorIndex -= maxColors; }
         lastInteractionTime = millis();
         memoryNeedsUpdate = true;
         delay(50); // Hardware debounce limit
@@ -108,7 +116,8 @@ void loop() {
     // 4. Smart EEPROM Write Wear Protection
     // Only writes if a value changed AND the user hasn't touched a button for 2 seconds
     if (memoryNeedsUpdate && (millis() - lastInteractionTime >= writeDelay)) {
-        EEPROM.update(ADDR_COLOR, colorIndex); // update() skips writing if data is identical
+        EEPROM.update(ADDR_COLOR, (uint8_t)(colorIndex & 0xFF)); // update() skips writing if data is identical
+        EEPROM.update(ADDR_COLOR_HI, (uint8_t)(colorIndex >> 8));
         EEPROM.update(ADDR_PATTERN, patternMode);
         memoryNeedsUpdate = false; // Reset update flag
     }
@@ -116,13 +125,13 @@ void loop() {
     // 5. Render Current Pattern State
     switch (patternMode) {
         case 0: // Solid Static Color
-        setSolidColor(colorWheel(colorIndex));
+        setSolidColor(baseColor());
         break;
         case 1: // Breathing Effect
-        breatheEffect(colorIndex);
+        breatheEffect();
         break;
         case 2: // Chaser / Marquee
-        chaserEffect(colorWheel(colorIndex));
+        chaserEffect(baseColor());
         break;
         case 3: // Rainbow Overwrite (Overrides base color selection)
         rainbowCycle(20);
@@ -156,6 +165,15 @@ uint32_t colorWheel(byte WheelPos) {
     return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
 }
 
+// Base colour for the current colorIndex. Positions 0-255 come from the wheel;
+// index 256 (maxColors - 1) is white, which sits one step past the wheel.
+uint32_t baseColor() {
+    if (colorIndex == maxColors - 1) {
+        return strip.Color(255, 255, 255); // White
+    }
+    return colorWheel((byte)colorIndex);
+}
+
 void setSolidColor(uint32_t c) {
     for(int i=0; i<strip.numPixels(); i++) {
         strip.setPixelColor(i, c);
@@ -176,7 +194,7 @@ void chaserEffect(uint32_t c) {
     }
 }
 
-void breatheEffect(uint8_t currentHue) {
+void breatheEffect() {
     static int brightness = 0;
     static int fadeAmount = 2;
     static unsigned long lastUpdate = 0;
@@ -184,7 +202,7 @@ void breatheEffect(uint8_t currentHue) {
         brightness += fadeAmount;
         if (brightness <= 0 || brightness >= 150) { fadeAmount = -fadeAmount; }
         strip.setBrightness(constrain(brightness, 0, 255));
-        setSolidColor(colorWheel(currentHue));
+        setSolidColor(baseColor());
         lastUpdate = millis();
     }
 }
