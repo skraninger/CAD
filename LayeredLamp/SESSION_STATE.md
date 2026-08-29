@@ -2,7 +2,7 @@
 
 > Read this first when resuming work in this directory. It captures where the
 > opencode session left off so context can be restored without the transcript.
-> Last updated: 2026-08-26.
+> Last updated: 2026-08-28.
 
 ## Project (short)
 
@@ -11,7 +11,37 @@ ATtiny85 driving a 4-pixel WS2812B strip, pattern switched by a capacitive touch
 pad on PB2. Full docs in `README.md` (created this session). Build guide:
 `ATtiny85 NeoPixel + Capacitive Touch.md` (describes the older 8-px/RC-touch design).
 
-## What was done in this session (in order)
+## Session 2026-08-28 — LedAttinyTouchx2 pattern port + compile check
+
+1. **Ported 4 patterns from `LedCodeAttinyTouch85.ino` into
+   `LedAttinyTouchx2/LedAttinyTouchx2.ino`** (30-px, dual touch-pad sketch):
+   `waveyFrame`, `scannerFrame`, `colorFirefly`, `colorWipeFrame`. Adapted to the
+   x2 style: each pattern is a self-contained function with `static` locals for
+   animation state and a `millis()` gate (no frame-delay return values), and each
+   calls `strip.show()` itself. Added `HSVtoRGB()` helper and `#define CTR_THRESH 16`.
+   Loop changes were minimal: `maxPatterns` 4 → 8 plus four new switch cases (4–7).
+2. **Compile-verified with arduino-cli** (see Build & test notes below):
+   7214 / 8192 bytes flash (88 %), 139 / 512 bytes SRAM (27 %).
+
+## Build & test notes (arduino-cli)
+
+- Toolchain: `arduino-cli` 1.5.2-rc.1; cores: `attiny:avr` 1.0.2, `arduino:avr`
+  1.8.8. Libraries: Adafruit_NeoPixel 1.15.5, ADCTouch 1.0.3.
+- **Correct FQBN for the lamp ATtiny85 at 8 MHz:**
+  ```
+  arduino-cli compile --fqbn attiny:avr:ATtinyX5:cpu=attiny85,clock=internal8 <sketch-dir>
+  ```
+  (Use `clock=external8` instead if the board has an external 8 MHz crystal.)
+- Gotchas hit while verifying:
+  - Multiple FQBN options must be **comma**-separated (`cpu=attiny85,clock=internal8`).
+    Colon-separated fails with "Invalid FQBN: not an FQBN" on arduino-cli 1.5.2-rc.1.
+  - Omitting `cpu=attiny85` silently builds for the **ATtiny25** (the ATtinyX5
+    default): 2 KB flash / 128 B SRAM → false "text section exceeds available
+    space" errors. The ATtiny85 has 8 KB flash / 512 B SRAM.
+  - Omitting the clock option defaults to 1 MHz internal → Adafruit_NeoPixel fails
+    with `#error "CPU SPEED NOT SUPPORTED"` (needs ≥ 4 MHz).
+
+## Previous session (2026-08-26) — LedCodeAttinyTouch85 ADCTouch port
 
 1. **Created `README.md`** — directory layout, CAD params/seeds/dimensions,
    electronics pin map, firmware notes, assembly steps.
@@ -78,10 +108,10 @@ pad on PB2. Full docs in `README.md` (created this session). Build guide:
 
 ## Next steps / open items
 
-1. **Flash and test on hardware** — no Arduino toolchain (`arduino-cli`) is
-   available in this environment, so nothing has been compile-checked. Build for
-   ATtiny85 (Adafruit NeoPixel + ADCTouch libraries) and verify all 5 patterns
-   and touch switching behave as before.
+1. **Flash and test on hardware** — `LedAttinyTouchx2` now compiles clean for
+   ATtiny85 (see Build & test notes); still needs on-hardware verification of all
+   8 patterns and both touch pads. `LedCodeAttinyTouch85` (4-px variant) is not
+   yet compile-checked; build with the same FQBN and verify its 5 patterns.
 2. Optional follow-ups (not requested yet):
    - Apply the same frame-based / centralized show-delay treatment to
      `LedCodeAttiny85_ADCTouch/LedCodeAttiny85_ADCTouch.ino` if desired.

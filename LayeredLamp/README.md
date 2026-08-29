@@ -19,6 +19,7 @@ The lamp body is generated parametrically in OpenSCAD (`StackedCubeLayers.scad`)
 | `LampClear.3mf`, `LampClear_2.3mf` | 3MF | Sliced print files for the clear lamp body (Slic3r PE / QIDI, incl. wipe-tower metadata) |
 | `LedCodeAttiny85_ADCTouch/LedCodeAttiny85_ADCTouch.ino` | Arduino | Firmware v2 — touch via **ADCTouch** library on PB2 (current) |
 | `LedCodeAttinyTouch85/LedCodeAttinyTouch85.ino` | Arduino | Firmware v1 — alternate pattern set (scanner/wipe/wavey/firefly/rainbow), touch via **ADCTouch** (GPL v3) |
+| `LedAttinyTouchx2/LedAttinyTouchx2.ino` | Arduino | Firmware v3 — 30-px strip, dual touch pads (color + pattern), EEPROM persistence of settings, 8 patterns |
 | `ATtiny85 NeoPixel + Capacitive Touch.md` | Markdown | Full build guide: BOM, wiring, libraries, sketch, flashing, tuning, troubleshooting |
 | `ATTINY85_Pinout.png` | Image | ATtiny85 pinout reference |
 
@@ -105,6 +106,20 @@ Both sketches live in their own Arduino-IDE-style folders and implement the same
 
 - **`LedCodeAttiny85_ADCTouch.ino`** (current) — uses `Adafruit_NeoPixel` + **ADCTouch**. Calibrates a baseline from 100 ADC samples at startup; triggers when the reading exceeds baseline by `THRESHOLD = 40`. Pattern frames are only recomputed every 90th loop so touch sampling stays responsive. Integer-only HSV→RGB (no floats).
 - **`LedCodeAttinyTouch85.ino`** (earlier pattern set, GPL v3) — also uses `Adafruit_NeoPixel` + **ADCTouch** on ADC1 (PB2), with baseline calibration and a 500 ms touch debounce. All five patterns are one-frame-per-call state machines (progress kept in per-pattern variables): each only sets pixels and returns its frame delay, and `loop()` does the single `strip.show()` + `delay()` for every pattern. `loop()` also polls the touch sensor exactly once per frame; a touch calls `resetPatternState()` to restart the new pattern from the beginning, giving the same immediate-interrupt feel as the original design (which had to re-poll the sensor inside each blocking animation loop).
+
+### Building / flashing with arduino-cli
+
+Both sketches target an **ATtiny85 at 8 MHz**:
+
+```
+arduino-cli compile --fqbn attiny:avr:ATtinyX5:cpu=attiny85,clock=internal8 <sketch-folder>
+```
+
+Use `clock=external8` if the board has an external 8 MHz crystal. Gotchas: multiple
+FQBN options are **comma**-separated (colon-separated fails with "Invalid FQBN");
+omitting `cpu=attiny85` silently builds for the ATtiny25 (2 KB flash) and overflows;
+the default 1 MHz clock breaks Adafruit_NeoPixel (`#error CPU SPEED NOT SUPPORTED`).
+Current `LedAttinyTouchx2` size: 7214 / 8192 B flash (88 %), 139 / 512 B SRAM (27 %).
 
 ### Build guide
 
