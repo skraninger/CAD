@@ -29,6 +29,9 @@ def generate_custom_border_butte(style, target_width_mm, target_height_mm,
     R = np.sqrt(X**2 + Y**2)
     Theta = np.arctan2(Y, X)
     
+    # Fixed RNG seed: makes the fractal texture below identical on every run.
+    # These phase draws are the ONLY randomness in the engine and their order
+    # is load-bearing -- see the noise loop before inserting any new draws.
     np.random.seed(52)
     
     r_variation = 1.5 * np.sin(3 * Theta) + 0.6 * np.cos(5 * Theta)
@@ -39,34 +42,123 @@ def generate_custom_border_butte(style, target_width_mm, target_height_mm,
     Z_base = np.where(Z_base > 9.2, 9.4 + 0.01 * (9.4 - Z_base), Z_base)
     
     # 3. Multi-Frequency Fractal Noise Layer (Texturing Engine)
+    # ------------------------------------------------------------------
+    # Stochastic rock relief, built as a sum of four sinusoidal "octaves":
+    #     noise = sum over octaves of  a * sin(f*X + phi_x) * cos(f*Y + phi_y)
+    #
+    # Why sin(X)*cos(Y) products with random phases:
+    #   * Without the phase offsets every octave would peak on the X and Y
+    #     axes and the surface would look like axis-aligned interference
+    #     fringes. Randomizing phi_x/phi_y per octave scatters the peaks so
+    #     the pattern reads as weathered stone, not a grid.
+    #   * By product-to-sum, sin(A)*cos(B) = 0.5*(sin(A+B) + sin(A-B)): each
+    #     octave is really two wavefronts running at +/-45 degrees to the
+    #     axes. Those diagonal ridges read as tilted sedimentary bedding
+    #     once the surface is scaled and rendered.
+    #
+    # Fractal falloff: each octave steps up ~2-2.5x in spatial frequency
+    # while amplitude drops by about half, so f=1.0 (a=0.6) sculpts broad
+    # undulations and f=12.0 (a=0.04) adds fine grain. The theoretical max
+    # |noise| is the sum of amplitudes = 1.06 raw units (all phases aligned);
+    # random phases keep real values well below that.
+    #
+    # Units: noise lives in the same raw +/-15 domain as Z_base, so step 6's
+    # z_scale stretches the relief together with the butte -- raising the
+    # height slider amplifies texture depth proportionally.
+    # ------------------------------------------------------------------
     noise = np.zeros_like(X)
-    frequencies = [1.0, 2.5, 6.0, 12.0]
-    amplitudes = [0.6, 0.3, 0.12, 0.04]
+    frequencies = [1.0, 2.5, 6.0, 12.0]   # spatial frequency per octave (rad / raw unit)
+    amplitudes = [0.6, 0.3, 0.12, 0.04]   # ~halved each octave => fractal falloff
 
     for f, a in zip(frequencies, amplitudes):
+        # Phase pair drawn sequentially from the single seed-52 stream. The
+        # draw order is fixed (octave 1 phi_x, octave 1 phi_y, octave 2 ...),
+        # so ANY np.random call inserted before or inside this loop
+        # re-sequences every phase and silently changes the texture pattern
+        # on the whole model. New stochastic features must use their own
+        # stream instead:  rng = np.random.default_rng(<fixed seed>)
         phi_x = np.random.uniform(0, 2 * np.pi)
         phi_y = np.random.uniform(0, 2 * np.pi)
         noise += a * np.sin(f * X + phi_x) * np.cos(f * Y + phi_y)
         
+    # Gaussian band centered on the cliff line (R_adjusted ~ 10.0 raw units,
+    # sigma = 2.5). Modulates ONLY the strata term in the style switcher
+    # below: it concentrates Sandstone/Shale ledges on the steep flank and
+    # fades them to ~0 on the flat plain and the plateau top. It deliberately
+    # does NOT touch noise amplitude -- that is exclusively the zone field's
+    # job, so the two channels never double-modulate each other.
     cliff_envelope = np.exp(-((R_adjusted - 10.0) / 2.5)**2)
 
+    # ------------------------------------------------------------------
     # Zone-based texture weighting: bottom strata / mesa sides / mesa top
-    grid_step = 30.0 / (resolution - 1)
-    gz_y, gz_x = np.gradient(Z_base, grid_step, grid_step)
+    # ------------------------------------------------------------------
+    # The fractal noise above has uniform amplitude everywhere; this block
+    # gives each geomorphic zone its own amplitude (the three GUI sliders)
+    # and cross-fades between zones so no visible boundary ring appears
+    # where one zone hands over to the next.
+    #
+    # Every grid node is classified by two scalar fields, both computed from
+    # Z_base -- the clean sigmoid profile BEFORE strata and noise are added --
+    # so zone boundaries stay stable regardless of how much detail the style
+    # switcher or texture sliders add:
+    #   elev_norm  = Z_base / max(Z_base)       "how high up the butte am I?"
+    #   slope_norm = |grad Z_base| / max(...)   "am I on a steep flank now?"
+    #
+    # The bottom -> sides -> top handover:
+    #   * w_side fades in by SLOPE. On the flat plain and foot-slope the
+    #     normalized slope is below 0.35, so w_side = 0. Climbing the sigmoid
+    #     flank, slope_norm crosses 0.35 and smoothsteps up to 1.0 by 0.75,
+    #     so the cliff band (where the profile drops fastest) fully belongs
+    #     to the sides slider.
+    #   * w_top fades in by ELEVATION. Below 65% of max height it is 0; above
+    #     90% it is 1, so the plateau cap belongs to the top slider. Where the
+    #     cap-clamp rim step makes the summit edge steep as well, w_side would
+    #     double-count -- hence the (1 - w_top) mask: at the summit the top
+    #     zone always wins.
+    #   * w_bottom is a RESIDUAL: 1 - w_top - w_side. Low flat terrain has
+    #     both active weights ~0, so the bottom slider owns the brim, foot-
+    #     slope and valley floor by default; wherever w_side or w_top rises,
+    #     w_bottom shrinks by exactly that amount -- amplitudes cross-fade
+    #     instead of switching.
+    #   * Every ramp is smoothstep t^2(3-2t): first derivative zero at both
+    #     ends of its range, so the blend is C1-smooth and texture amplitude
+    #     varies continuously with no banding at the 0.65/0.90 or 0.35/0.75
+    #     thresholds.
+    #
+    # Partition of unity: w_bottom + w_side + w_top == 1.0 at every node
+    # (bottom is the clipped residual). That guarantees "all three sliders
+    # equal => one uniform global texture", i.e. pre-v15 behavior remains
+    # reachable from the v15 UI. If you add a zone, steal weight explicitly
+    # and keep bottom as the residual to preserve this property.
+    # ------------------------------------------------------------------
+    grid_step = 30.0 / (resolution - 1)          # raw units per cell across the 30-unit domain
+    gz_y, gz_x = np.gradient(Z_base, grid_step, grid_step)   # central-difference gradient of clean profile
     slope_mag = np.sqrt(gz_x**2 + gz_y**2)
-    slope_norm = slope_mag / (np.max(slope_mag) + 1e-9)
+    slope_norm = slope_mag / (np.max(slope_mag) + 1e-9)      # 0 = flat ... 1 = steepest point
 
-    elev_norm = Z_base / (np.max(Z_base) + 1e-9)
+    elev_norm = Z_base / (np.max(Z_base) + 1e-9)             # 0 = valley floor ... 1 = mesa cap
+    # Mesa top: smoothstep on elevation between 65% and 90% of max height
     t_top = np.clip((elev_norm - 0.65) / (0.90 - 0.65), 0.0, 1.0)
     w_top = t_top * t_top * (3.0 - 2.0 * t_top)
+    # Mesa sides: smoothstep on slope steepness between 0.35 and 0.75,
+    # masked out wherever the top zone is active (summit rim wins)
     t_side = np.clip((slope_norm - 0.35) / (0.75 - 0.35), 0.0, 1.0)
     w_side = t_side * t_side * (3.0 - 2.0 * t_side) * (1.0 - w_top)
+    # Bottom strata: residual weight -- owns everything the other two don't
     w_bottom = np.clip(1.0 - w_top - w_side, 0.0, 1.0)
 
+    # Per-node amplitude: weighted blend of the three slider values. With all
+    # three sliders equal this collapses to that single value everywhere
+    # (partition of unity), recovering a uniform global texture factor.
     texture_field = w_bottom * texture_bottom + w_side * texture_sides + w_top * texture_top
     noise_layer = noise * texture_field
 
     # Apply Geological Style Switcher
+    # Two independent modulation channels combine in each branch: `strata` is
+    # deterministic bedding ledges shaped by cliff_envelope (cliff band only),
+    # while `noise_layer` carries the stochastic fractal relief with its
+    # zone-weighted amplitude. Keep them separate -- never let one channel
+    # re-modulate the other.
     if style == 'Sandstone':
         strata = np.sin(stratification_factor * np.pi * Z_base)
         strata = np.where(strata > 0.15, 0.35, -0.2)
