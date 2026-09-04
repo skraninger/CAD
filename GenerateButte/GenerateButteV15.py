@@ -7,7 +7,13 @@ import numpy as np
 # Force Tkinter window layer binding explicitly for Windows environments
 import matplotlib
 matplotlib.use("TkAgg")
-import matplotlib.pyplot as plt
+# v15.2 CLEAN-EXIT FIX: use a bare Figure instead of pyplot's plt.figure().
+# pyplot's figure manager creates its own hidden tk.Tk() root window behind the
+# scenes; with two Tk roots in one process, mainloop() never returns after the
+# app window is destroyed on Python 3.13 -- clicking X left a zombie process
+# running forever. A bare Figure creates no window at all, so the app's Tk
+# root stays the only instance and the program exits cleanly when closed.
+from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 # ==========================================
@@ -411,7 +417,9 @@ class ButteGeneratorGUI:
         self.plot_frame = ttk.Frame(root, padding=10)
         self.plot_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
-        self.fig = plt.figure(figsize=(7, 6))
+        # v15.2: bare Figure (NOT plt.figure) -- keeps the app's Tk root as the
+        # only Tk instance so closing the window exits the process cleanly.
+        self.fig = Figure(figsize=(7, 6), dpi=100)
         self.ax = self.fig.add_subplot(111, projection='3d')
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.plot_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
