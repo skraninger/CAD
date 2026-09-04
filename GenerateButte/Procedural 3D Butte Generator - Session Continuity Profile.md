@@ -1,7 +1,7 @@
-# Procedural 3D Butte Generator - Session Continuity Profile (Part 1 of 6)
+# Procedural 3D Butte Generator - Session Continuity Profile
 
 ## 1. Executive Summary & Session State
-This profile captures the development history, mathematical framework, and current software state of a procedural 3D terrain modeling pipeline designed for 3D printing. The engine creates freestanding, highly textured, stratified geological butte structures mimicking ancient Cambrian formations. As of v15 it outputs open-bottom uniform-thickness hollow shells (binary STL) with surface texturing controlled independently per geomorphic zone (bottom strata / mesa sides / mesa top).
+This profile captures the development history, mathematical framework, and current software state of a procedural 3D terrain modeling pipeline designed for 3D printing. The engine creates freestanding, highly textured, stratified geological butte structures mimicking ancient Cambrian formations. As of v15 it outputs open-bottom uniform-thickness hollow shells (binary STL) with surface texturing controlled independently per geomorphic zone (bottom strata / mesa sides / mesa top). The side→top handover is a C1-smooth shoulder (no rim spike) whose gradualness is user-controlled by a dedicated slider.
 
 ## 2. Iteration History & Feature Roadmap
 * **v1.0 - v4.0 (Linear Cliffs):** Baseline procedural terrain generation utilizing a linear logistic sigmoid step function to transition from a flat lower plain into an elevated plateau. Integrated multi-frequency fractal noise arrays and a pure-Python binary STL triangulation system constrained to a 220mm physical workspace footprint.
@@ -14,19 +14,17 @@ This profile captures the development history, mathematical framework, and curre
 
 * **v15.0 (Current - Uniform-Shell Manifold Core):** Implemented true 3D surface-normal hollowing with open-bottom perimeter stitching, a Verify & Approve export lock, a multi-resolution pipeline (60x60 live preview, 80x80 verification, 130x130 final STL export), degenerate-facet filtering, and zone-weighted fractal texturing with independent bottom/sides/top amplitude sliders. Source file: `GenerateButteV15.py`.
 
-  # Procedural 3D Butte Generator - Session Continuity Profile (Part 2 of 6)
+* **v15.1 (Current - Smooth Side→Top Shoulder):** Replaced the hard mesa-cap clamp (`np.where(Z_base > 9.2, ...)`) -- which left a ~0.2-unit vertical "spike" exactly where the cliff met the cap -- with a C1-smooth smoothstep shoulder that blends the cliff profile into the flat cap via `Z_base = lerp(Z_sig, cap_level, w_cap)`. Added a new `Side→Top Transition` slider (raw units, 0.2–4.0, default 1.5) that controls how gradual that handover is: small = tight rounded rim, large = the flat-cap surface bleeds gradually down the flank. Source file remains `GenerateButteV15.py`.
 
   ## 3. UI Framework & Platform Configuration
   *   **GUI Subsystem:** Built using Python's native Tkinter package paired with Matplotlib's interactive 3D surface plot engine (`FigureCanvasTkAgg`).
   *   **Windows OS Compatibility Wrapper:** Fixed display canvas layer bugs on Windows systems by forcing an explicit backend binding hook (`matplotlib.use("TkAgg")`) at initialization to prevent operating system graphics driver thread deadlocks.
   *   **Export Verification Lock:** Integrated an application verification state. The "Export" action button is locked and grayed out until the user executes a structural limit check by hitting "Verify & Approve Structural Model".
-
+  
   ## 4. The v12 - v14 Hollowing Problem (Historical Context)
   *   **The Issue:** Early attempts at hollowing the model used a basic vertical coordinate subtraction routine ($Z_{in} = Z - \text{thickness}$).
   *   **The Failure State:** Direct vertical drops only provided uniform wall thickness on completely horizontal structures (like the very top mesa). On steep cliff faces, a vertical drop thinned out the walls drastically, causing intersecting faces, naked unclosed edge gaps, and non-manifold mesh structural collapses that rejected slicer file imports.
   *   **The Solution Transition:** The hollowing algorithm had to be shifted away from vertical translation metrics and moved into a true 3D surface normal vector vector displacement pipeline.
-
-# Procedural 3D Butte Generator - Session Continuity Profile (Part 3 of 6)
 
 ## 5. Mathematical Mechanics (Version 15)
 
@@ -39,7 +37,10 @@ $$R_{adjusted} = R + 1.5\sin(3\theta) + 0.6\cos(5\theta)$$
 ### B. Mesa Profile & Logistic Sigmoid Slope
 The raw vertical profile uses an inverse logistic curve to form a broad plateau, step vertical drops, and flat foot-slopes:
 $$Z_{base} = \frac{10.0}{1.0 + e^{2.0(R_{adjusted} - 10.5)}}$$
-A plateau-flattening clamp then caps the asymptotic dome top: wherever $Z_{base} > 9.2$, the value is remapped to $Z_{cap} = 9.4 + 0.01(9.4 - Z_{base})$, producing a near-flat mesa cap at approximately 9.39-9.40 with a small rim step at the clamp boundary.
+The flat mesa cap is then blended in on top of that profile with a C1-smooth smoothstep (no hard clamp, no rim spike):
+$$t_{cap} = \mathrm{clip}\!\left(\frac{Z_{sig} - (9.4 - w)}{w},\ 0,\ 1\right),\qquad w_{cap} = t_{cap}^{2}(3 - 2t_{cap})$$
+$$Z_{base} = Z_{sig} + w_{cap}\,(9.4 - Z_{sig}) \;=\; \mathrm{lerp}(Z_{sig},\, 9.4,\, w_{cap})$$
+where $w$ is the `Side→Top Transition` slider value (raw units). Below $9.4 - w$ the profile is the pure cliff ($w_{cap}=0$); at and above $9.4$ it is the flat cap ($w_{cap}=1$, $Z_{base}=9.4$); in between it is a continuous rounded shoulder. Because the smoothstep has zero first derivative at both ends, the handover is C1-continuous (no step, no spike). Larger $w$ makes the shoulder wider and the side→top transition more gradual.
 
 ### C. 3D Vector Surface Normal Inward Extrusion
 To maintain a strict uniform millimeter wall scale across all slopes, the engine evaluates central difference cross-products of adjacent nodes to calculate true vertex unit normals ($N_x, N_y, N_z$):
@@ -59,8 +60,6 @@ $$\text{noise\_layer} = \text{noise} \times (w_{bottom} \cdot T_{bottom} + w_{si
 
 This replaces the old global texture factor as well as Sandstone's previous cliff-envelope noise modulation ($0.4 + 0.6\,\text{cliff}$). With all three sliders set to the same value, the result is identical to a uniform global coefficient.
 
-# Procedural 3D Butte Generator - Session Continuity Profile (Part 4 of 6)
-
 ## 6. Current Parametric Sliders & Initialization Benchmarks
 When initializing or tweaking the program interface, the default input parameters are calibrated to the following geomorphic baselines:
 
@@ -68,6 +67,7 @@ When initializing or tweaking the program interface, the default input parameter
 *   **Target Height (`height_slider`):** 20mm to 230mm range (Defaults to **120.0 mm**).
 *   **Stratification Bedding Factor (`strata_slider`):** 0.5 to 6.0 scale range (Defaults to **2.5**). Multiplies step-wise sine functions against base heights to form deep sedimentary ledges.
 *   **Zone Texture Factors (`texture_bottom_slider`, `texture_sides_slider`, `texture_top_slider`):** Each on a 0.0 to 4.0 scale range (all default to **1.5**). Independently control multi-frequency fractal noise amplitude for the flat bottom strata, the steep mesa sides, and the plateau top via the zone-weighted texture field (Section 5E).
+*   **Side→Top Transition (`side_top_slider`):** 0.2 to 4.0 raw-unit range (Defaults to **1.5**). Controls the width of the C1-smooth shoulder that blends the cliff profile into the flat mesa cap -- i.e. how gradual the side→top handover is. Small = tight rounded rim; large = the flat-cap surface bleeds gradually down the flank. Replaces the old hard cap clamp (Section 5B).
 *   **Flat Contour Brim Width (`border_slider`):** 0.0mm to 25.0mm range (Defaults to **5.0 mm** flat protective brim offset).
 *   **Shell Thickness (`shell_slider`):** 0.0mm to 20.0mm range (Defaults to **5.0 mm** open-bottom uniform shell thickness).
 *   **Geological Style Switcher (`style_menu`):** Triggers custom slope variations:
@@ -77,20 +77,18 @@ When initializing or tweaking the program interface, the default input parameter
 *   **Resolution Pipeline:** The terrain grid is regenerated at three fixed resolutions: 60x60 for the live slider preview, 80x80 when "Verify & Approve Structural Model" runs, and 130x130 for the final STL export.
 *   **Export Naming & Format:** Approved exports are binary STL only, defaulting to `open_shell_v15_butte_{style}.stl`. The legacy `manifold_v14_shell_sandstone.stl` and `butte_shell_sandstone.3mf` files in this folder predate v15 and were produced by earlier builds (no 3MF writer exists in the current code).
 
-# Procedural 3D Butte Generator - Session Continuity Profile (Part 5 of 6)
-
 ## 7. Code Map & Modification Guide (`GenerateButteV15.py`)
 Run with `python GenerateButteV15.py` (Windows; requires numpy and matplotlib, tkinter ships with Python). Line numbers are approximate and will drift as the file grows.
 
 ### File Layout
 *   **Lines ~1-11 - Imports & Platform Hook:** `matplotlib.use("TkAgg")` must stay directly below the imports (Windows thread-deadlock fix).
-*   **`generate_custom_border_butte(style, target_width_mm, target_height_mm, stratification_factor, texture_bottom, texture_sides, texture_top, border_padding_mm, shell_thickness_mm, resolution=100)` (~lines 16-164) - Core Engine.** Returns the 7-tuple `(X_scaled, Y_scaled, Z_scaled, X_in, Y_in, Z_in, valid_mask)`. Internal numbered steps: (1) radial framing + angular asymmetry, (2) sigmoid mesa profile + cap clamp, (3) fractal noise + zone texture field, geological style switcher, (4) valley-floor masking, (5) brim dilation (mm to pixel pad), (6) mm rescaling of X/Y/Z, (7) normal-extrusion hollowing.
+*   **`generate_custom_border_butte(style, target_width_mm, target_height_mm, stratification_factor, texture_bottom, texture_sides, texture_top, side_top_transition, border_padding_mm, shell_thickness_mm, resolution=100)` (~lines 16-190) - Core Engine.** Returns the 7-tuple `(X_scaled, Y_scaled, Z_scaled, X_in, Y_in, Z_in, valid_mask)`. Internal numbered steps: (1) radial framing + angular asymmetry, (2) sigmoid mesa profile + smooth side→top shoulder (slider-controlled), (3) fractal noise + zone texture field, geological style switcher, (4) valley-floor masking, (5) brim dilation (mm to pixel pad), (6) mm rescaling of X/Y/Z, (7) normal-extrusion hollowing.
 *   **`calculate_normal(p1, p2, p3)` (~line 169):** per-facet unit normal with a `(0, 0, 1)` fallback for degenerate input.
 *   **`write_contour_binary_stl(X, Y, Z, X_in, Y_in, Z_in, mask, shell_thickness_mm, filename)` (~lines 176-238) - STL Compiler:** outer-surface triangles (only cells whose four mask corners are all valid), inner-surface triangles with reversed winding (emitted only when shell > 0), perimeter stitch strips along mask transitions, degenerate-facet filter (area^2 > 1e-9), then 80-byte header + uint32 count + 50 bytes per facet.
 *   **`ButteGeneratorGUI` (~lines 243-370) - Tkinter UI:** `create_slider()` factory (auto-binds approval invalidation), `update_preview()` (resolution 60), `update_plot_and_approve()` (resolution 80, unlocks export), `redraw_canvas()`, `save_stl()` (regenerates at resolution 130 and writes the file).
 
 ### Critical Invariants - Read Before Modifying
-1.  **Raw-unit domain:** All geometry formulas operate on a fixed +/-15 (30x30 unit) grid before mm rescaling in step 6. The sigmoid center (10.5), cap clamp (9.2 / 9.4), cliff_envelope center (10.0, sigma 2.5), and all zone thresholds are raw units, not millimeters. Rescale these constants together if the domain size changes.
+1.  **Raw-unit domain:** All geometry formulas operate on a fixed +/-15 (30x30 unit) grid before mm rescaling in step 6. The sigmoid center (10.5), cap level (9.4) + side→top shoulder width (`side_top_transition`), cliff_envelope center (10.0, sigma 2.5), and all zone thresholds are raw units, not millimeters. Rescale these constants together if the domain size changes.
 2.  **Deterministic noise:** `np.random.seed(52)` is fixed before phase draws. The four frequency phases are drawn sequentially from this single seed, so inserting any random draw before the loop shifts every texture pattern in the model. Use a separate `np.random.default_rng(...)` stream for new stochastic features instead.
 3.  **Partition of unity:** `w_bottom + w_side + w_top = 1.0` holds exactly (the bottom weight is a clipped residual). This guarantees "all three texture sliders equal => uniform global texture". Preserve this property when editing the zone field.
 4.  **cliff_envelope vs zone field:** The Gaussian cliff_envelope still modulates only the strata term (Sandstone/Shale ledges concentrate on the cliff band). Noise amplitude is governed solely by the zone field. Do not reintroduce double modulation of noise.
@@ -98,40 +96,9 @@ Run with `python GenerateButteV15.py` (Windows; requires numpy and matplotlib, t
 6.  **Winding orientation:** Outer triangles point up/outward, inner triangles use reversed winding (normals down/inward), and stitch strips alternate accordingly. Reordering vertices flips normals and slicers will invert solid/void or reject the file.
 7.  **Z_in >= 0 clamp:** The inner shell is clamped to the bed plane. On flat z=0 regions the inner and outer surfaces coincide; those zero-area slivers are removed by the degenerate-facet filter, not by geometry logic.
 8.  **Approval state machine:** Any control change calls `invalidate_approval()` and re-locks export. Preview (60), approve (80), and export (130) each regenerate the grid from scratch - export does not reuse the approved 80x80 state matrices.
-9.  **Adding a slider = 4 touch points:** (a) one `create_slider(...)` line in `__init__` (auto-binds invalidation), (b) read it in `update_preview`, (c) read it in `update_plot_and_approve`, (d) read and pass it positionally in `save_stl`. The engine's parameter order is fixed: style, width, height, strata, tex_bottom, tex_sides, tex_top, border, shell, resolution. Window geometry is currently 1100x760 for the 8 sliders - increase the height when adding more.
+9.  **Adding a slider = 4 touch points:** (a) one `create_slider(...)` line in `__init__` (auto-binds invalidation), (b) read it in `update_preview`, (c) read it in `update_plot_and_approve`, (d) read and pass it positionally in `save_stl`. The engine's parameter order is fixed: style, width, height, strata, tex_bottom, tex_sides, tex_top, side_top_transition, border, shell, resolution. Window geometry is currently 1100x920 for the 9 sliders - increase the height when adding more.
 
-## 8. Headless Verification Recipe (No GUI Required)
-Run after any engine or STL-writer change:
-
-'''
-import sys, struct
-import numpy as np
-sys.path.insert(0, r"D:\Projects\GIT\skraninger\CAD\GenerateButte")
-from GenerateButteV15 import generate_custom_border_butte, write_contour_binary_stl
-
-X, Y, Z, Xi, Yi, Zi, mask = generate_custom_border_butte(
-    'Sandstone', 220.0, 120.0, 2.5, 1.5, 1.5, 1.5, 5.0, 5.0, resolution=130)
-write_contour_binary_stl(X, Y, Z, Xi, Yi, Zi, mask, 5.0, r"C:\temp\check.stl")
-
-data = open(r"C:\temp\check.stl", 'rb').read()
-n = struct.unpack('<I', data[80:84])[0]
-assert len(data) == 84 + 50 * n            # binary structure intact
-edges = {}
-for off in range(84, len(data), 50):
-    v = [tuple(np.frombuffer(data[off+12+12*i: off+24+12*i], dtype='<f4')) for i in range(3)]
-    for a, b in ((0,1),(1,2),(2,0)):
-        e = (tuple(np.round(v[a], 6)), tuple(np.round(v[b], 6)))
-        edges[e] = edges.get(e, 0) + 1
-        edges[(e[1], e[0])] = edges.get((e[1], e[0]), 0) + 1
-assert all(c % 2 == 0 for c in edges.values())   # manifold: every edge shared evenly
-print(f"OK: {n} facets, watertight")
-'''
-
-A healthy shell export at resolution 130 with default parameters yields about 51,700 facets. A solid-mode (shell = 0) export yields roughly half that (~25,850), since no inner surface or stitch strips are emitted.
-
-# Procedural 3D Butte Generator - Session Continuity Profile (Part 6 of 6)
-
-## 9. Context Anchor for Future AI Sessions
+## 8. Context Anchor for Future AI Sessions
 Copy and paste this final block directly into a fresh chat window to reload this exact workspace context with complete operational fidelity:
 
 '''
@@ -142,7 +109,7 @@ Key Architectural Context to Maintain:
 2. Windows Platform Fix: Uses explicit 'matplotlib.use("TkAgg")' declarations right below imports to bypass Windows thread deadlock states.
 3. Version 15 Hollowing Math: Calculates true 3D vertex surface normal vectors via grid step cross-products, extruding the inner shell cavity wall inward perpendicularly ('P_in = P_out - thickness * N') to maintain a uniform thickness across all vertical cliff facets and steep slopes.
 4. Topology: It outputs an open-bottom hollow manifold shell by directly bridging the inner cavity and outer landscape perimeters together without closing off the print bed floor. Zero-area degenerate facets are filtered from the binary STL output, and no stitch strips are written when shell thickness is 0 (solid mode).
-5. Sliders: Includes independent width and height sliders (20-230mm range, both defaulting to 120.0mm), rock style, three zone texture sliders (bottom strata / mesa sides / mesa top, each 0.0-4.0, all defaulting to 1.5) that blend per-zone via a partition-of-unity weight field, a flat contour brim offset slider (defaulting to 5.0mm), and a shell thickness slider (defaulting to 5.0mm).
+5. Sliders: Includes independent width and height sliders (20-230mm range, both defaulting to 120.0mm), rock style, three zone texture sliders (bottom strata / mesa sides / mesa top, each 0.0-4.0, all defaulting to 1.5) that blend per-zone via a partition-of-unity weight field, a Side→Top Transition slider (0.2-4.0 raw units, default 1.5) that controls how gradual the C1-smooth cliff-to-cap shoulder is, a flat contour brim offset slider (defaulting to 5.0mm), and a shell thickness slider (defaulting to 5.0mm).
 6. Pipeline: The grid regenerates at 60x60 (preview), 80x80 (verify/approve), and 130x130 (export) resolutions. Exports are binary STL named `open_shell_v15_butte_{style}.stl`. Current source file is GenerateButteV15.py.
 7. Reference Material: This profile contains a full code map, the critical invariants to respect before editing (raw-unit domain constants, fixed RNG seed 52, partition-of-unity zone weights, STL winding orientation, approval state machine), and a headless STL watertightness verification recipe in Sections 7-8. Read those sections before modifying the engine or the STL writer.
 

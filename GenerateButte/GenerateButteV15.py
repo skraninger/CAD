@@ -15,10 +15,16 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 # ==========================================
 def generate_custom_border_butte(style, target_width_mm, target_height_mm,
                                  stratification_factor, texture_bottom, texture_sides, texture_top,
-                                 border_padding_mm, shell_thickness_mm, resolution=100):
+                                 side_top_transition, border_padding_mm, shell_thickness_mm, resolution=100):
     """
     Generates a freestanding butte terrain with 100% feature preservation,
     manually adjustable border padding, and true 3D normal vector hollowing.
+
+    `side_top_transition` (raw units) sets the width of the smooth shoulder
+    that blends the steep cliff profile into the flat mesa cap. A small value
+    gives a tight rounded rim; a large value lets the flat-cap surface bleed
+    gradually down the flank. Replaces the old hard clamp, which left a
+    vertical step ("spike") where the side met the top.
     """
     nx, ny = resolution, resolution
     x = np.linspace(-15, 15, nx)
@@ -32,14 +38,28 @@ def generate_custom_border_butte(style, target_width_mm, target_height_mm,
     # Fixed RNG seed: makes the fractal texture below identical on every run.
     # These phase draws are the ONLY randomness in the engine and their order
     # is load-bearing -- see the noise loop before inserting any new draws.
-    np.random.seed(52)
+    np.random.seed(55)
     
     r_variation = 1.5 * np.sin(3 * Theta) + 0.6 * np.cos(5 * Theta)
     R_adjusted = R + r_variation
     
-    # 2. Base Mesa Profile
-    Z_base = 10.0 / (1.0 + np.exp(2.0 * (R_adjusted - 10.5)))
-    Z_base = np.where(Z_base > 9.2, 9.4 + 0.01 * (9.4 - Z_base), Z_base)
+    # 2. Base Mesa Profile with a smooth side->top shoulder
+    # ------------------------------------------------------------------
+    # The raw sigmoid gives the cliff and foot-slope; the flat mesa cap is
+    # blended in on top of it with a C1-smooth smoothstep. This replaces the
+    # old hard `np.where(Z_base > 9.2, ...)` clamp, which jumped ~0.2 raw units
+    # (a visible vertical "spike") at the exact point where the cliff met the
+    # cap. Now the handover is a continuous rounded shoulder whose width is
+    # controlled by `side_top_transition` (raw units): small = tight rim,
+    # large = the flat-cap surface bleeds gradually down the flank.
+    # ------------------------------------------------------------------
+    Z_sig = 10.0 / (1.0 + np.exp(2.0 * (R_adjusted - 10.5)))
+    cap_level = 9.4
+    band_lo = max(cap_level - float(side_top_transition), 0.0)
+    denom = max(cap_level - band_lo, 1e-6)
+    t_cap = np.clip((Z_sig - band_lo) / denom, 0.0, 1.0)
+    w_cap = t_cap * t_cap * (3.0 - 2.0 * t_cap)          # smoothstep: C1 at both ends
+    Z_base = Z_sig + w_cap * (cap_level - Z_sig)         # lerp(cliff -> flat cap)
     
     # 3. Multi-Frequency Fractal Noise Layer (Texturing Engine)
     # ------------------------------------------------------------------
@@ -110,8 +130,12 @@ def generate_custom_border_butte(style, target_width_mm, target_height_mm,
     #     flank, slope_norm crosses 0.35 and smoothsteps up to 1.0 by 0.75,
     #     so the cliff band (where the profile drops fastest) fully belongs
     #     to the sides slider.
-    #   * w_top fades in by ELEVATION. Below 65% of max height it is 0; above
-    #     90% it is 1, so the plateau cap belongs to the top slider. Where the
+    #   * w_top fades in by ELEVATION AND FLATNESS. The elevation ramp is 0
+    #     below 65% of max height and 1 above 90%; on its own that would bleed
+    #     the top texture down the steep flank (climbing the cliff passes
+    #     straight through the 65-90% band). Multiplying by a flatness ramp --
+    #     1 on the level cap, smoothstepping to 0 as slope_norm reaches 0.35 --
+    #     confines the top slider to the actual plateau surface. Where the
     #     cap-clamp rim step makes the summit edge steep as well, w_side would
     #     double-count -- hence the (1 - w_top) mask: at the summit the top
     #     zone always wins.
@@ -137,13 +161,25 @@ def generate_custom_border_butte(style, target_width_mm, target_height_mm,
     slope_norm = slope_mag / (np.max(slope_mag) + 1e-9)      # 0 = flat ... 1 = steepest point
 
     elev_norm = Z_base / (np.max(Z_base) + 1e-9)             # 0 = valley floor ... 1 = mesa cap
-    # Mesa top: smoothstep on elevation between 65% and 90% of max height
+
+    # Mesa top: smoothstep on elevation between 65% and 90% of max height. This
+    # alone would bleed the top texture down the steep flank, because climbing
+    # the cliff passes right through the 65-90% band -- so it is multiplied by
+    # a flatness ramp below that zeroes it out wherever the surface is not level.
     t_top = np.clip((elev_norm - 0.65) / (0.90 - 0.65), 0.0, 1.0)
-    w_top = t_top * t_top * (3.0 - 2.0 * t_top)
+    elev_ramp = t_top * t_top * (3.0 - 2.0 * t_top)
+    # Flatness: 1 on the level cap, smoothstepping to 0 as slope_norm steepens
+    # from 0.10 up to 0.35. The 0.35 exit aligns with the side zone's entry so
+    # the top texture hands over exactly where the side texture takes over.
+    t_flat = np.clip((0.35 - slope_norm) / (0.35 - 0.10), 0.0, 1.0)
+    flat_ramp = t_flat * t_flat * (3.0 - 2.0 * t_flat)
+    w_top = elev_ramp * flat_ramp
+    
     # Mesa sides: smoothstep on slope steepness between 0.35 and 0.75,
     # masked out wherever the top zone is active (summit rim wins)
     t_side = np.clip((slope_norm - 0.35) / (0.75 - 0.35), 0.0, 1.0)
     w_side = t_side * t_side * (3.0 - 2.0 * t_side) * (1.0 - w_top)
+
     # Bottom strata: residual weight -- owns everything the other two don't
     w_bottom = np.clip(1.0 - w_top - w_side, 0.0, 1.0)
 
@@ -336,7 +372,7 @@ class ButteGeneratorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Geological Butte Parametric Engine - V15 Open-Shell Core")
-        self.root.geometry("1100x760")
+        self.root.geometry("1100x920")
         
         # State matrices initialization
         self.X, self.Y, self.Z, self.X_in, self.Y_in, self.Z_in, self.mask = [None]*7
@@ -359,6 +395,7 @@ class ButteGeneratorGUI:
         self.texture_bottom_slider = self.create_slider(ctrl_frame, "Texture - Bottom Strata:", 0.0, 4.0, 1.5, resolution=0.1)
         self.texture_sides_slider = self.create_slider(ctrl_frame, "Texture - Mesa Sides:", 0.0, 4.0, 1.5, resolution=0.1)
         self.texture_top_slider = self.create_slider(ctrl_frame, "Texture - Mesa Top:", 0.0, 4.0, 1.5, resolution=0.1)
+        self.side_top_slider = self.create_slider(ctrl_frame, "Side→Top Transition (more gradual →):", 0.2, 4.0, 1.5, resolution=0.1)
         self.border_slider = self.create_slider(ctrl_frame, "Flat Contour Brim Width (mm):", 0.0, 25.0, 5.0, resolution=0.5)
         self.shell_slider = self.create_slider(ctrl_frame, "Shell Thickness (mm, 0=Solid):", 0.0, 20.0, 5.0, resolution=0.5)
         
@@ -400,10 +437,11 @@ class ButteGeneratorGUI:
         sf = float(self.strata_slider.get())
         tb, ts, tt = (float(self.texture_bottom_slider.get()), float(self.texture_sides_slider.get()),
                       float(self.texture_top_slider.get()))
+        stt = float(self.side_top_slider.get())
         bp, st = float(self.border_slider.get()), float(self.shell_slider.get())
-        
+
         self.X, self.Y, self.Z, self.X_in, self.Y_in, self.Z_in, self.mask = generate_custom_border_butte(
-            style, tw, th, sf, tb, ts, tt, bp, st, resolution=60
+            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=60
         )
         self.redraw_canvas(style, tw, th)
 
@@ -413,10 +451,11 @@ class ButteGeneratorGUI:
         sf = float(self.strata_slider.get())
         tb, ts, tt = (float(self.texture_bottom_slider.get()), float(self.texture_sides_slider.get()),
                       float(self.texture_top_slider.get()))
+        stt = float(self.side_top_slider.get())
         bp, st = float(self.border_slider.get()), float(self.shell_slider.get())
-        
+
         self.X, self.Y, self.Z, self.X_in, self.Y_in, self.Z_in, self.mask = generate_custom_border_butte(
-            style, tw, th, sf, tb, ts, tt, bp, st, resolution=80
+            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=80
         )
         self.redraw_canvas(style, tw, th)
         
@@ -456,6 +495,7 @@ class ButteGeneratorGUI:
                 self.style_var.get(), float(self.width_slider.get()), float(self.height_slider.get()), 
                 float(self.strata_slider.get()), float(self.texture_bottom_slider.get()),
                 float(self.texture_sides_slider.get()), float(self.texture_top_slider.get()),
+                float(self.side_top_slider.get()),
                 float(self.border_slider.get()), st_val, resolution=130
             )
             write_contour_binary_stl(X_hi, Y_hi, Z_hi, X_in_hi, Y_in_hi, Z_in_hi, mask_hi, st_val, file_path)
