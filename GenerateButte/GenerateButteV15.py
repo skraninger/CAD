@@ -21,7 +21,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 # ==========================================
 def generate_custom_border_butte(style, target_width_mm, target_height_mm,
                                  stratification_factor, texture_bottom, texture_sides, texture_top,
-                                 side_top_transition, border_padding_mm, shell_thickness_mm, resolution=100):
+                                 side_top_transition, border_padding_mm, shell_thickness_mm, resolution=100, seed=55):
     """
     Generates a freestanding butte terrain with 100% feature preservation,
     manually adjustable border padding, and true 3D normal vector hollowing.
@@ -31,6 +31,10 @@ def generate_custom_border_butte(style, target_width_mm, target_height_mm,
     gives a tight rounded rim; a large value lets the flat-cap surface bleed
     gradually down the flank. Replaces the old hard clamp, which left a
     vertical step ("spike") where the side met the top.
+
+    `seed` (v15.3) sets the RNG seed for the fractal texture phase draws so
+    the noise pattern is user-selectable from the UI; default 55 keeps the
+    historical pattern. Same seed => identical texture, every run.
     """
     nx, ny = resolution, resolution
     x = np.linspace(-15, 15, nx)
@@ -41,10 +45,11 @@ def generate_custom_border_butte(style, target_width_mm, target_height_mm,
     R = np.sqrt(X**2 + Y**2)
     Theta = np.arctan2(Y, X)
     
-    # Fixed RNG seed: makes the fractal texture below identical on every run.
+    # v15.3: RNG seed is now UI-controlled (default 55 = historical pattern).
+    # It makes the fractal texture below deterministic for a given seed value.
     # These phase draws are the ONLY randomness in the engine and their order
     # is load-bearing -- see the noise loop before inserting any new draws.
-    np.random.seed(55)
+    np.random.seed(int(seed))
     
     r_variation = 1.5 * np.sin(3 * Theta) + 0.6 * np.cos(5 * Theta)
     R_adjusted = R + r_variation
@@ -307,6 +312,23 @@ def calculate_normal(p1, p2, p3):
     norm = np.linalg.norm(n)
     return tuple(n / norm) if norm > 0 else (0.0, 0.0, 1.0)
 
+def simplify_grid_mesh(X, Y, Z, X_in, Y_in, Z_in, mask, stride):
+    """ v15.3: Coarsens a grid mesh by keeping every `stride`-th node per axis.
+
+    Triangle count drops by roughly stride^2 (e.g. stride 4 on the 130x130
+    export grid -> ~33x33, about 16x fewer facets) while the shape stays
+    recognizable. Because the STL compiler below re-derives outer/inner
+    pairing and perimeter stitching from whatever mask it is given, a
+    downsampled mask still produces a closed open-bottom manifold shell --
+    no separate repair pass is needed. stride <= 1 returns the input
+    unchanged (full detail).
+    """
+    if stride <= 1:
+        return X, Y, Z, X_in, Y_in, Z_in, mask
+    return (X[::stride, ::stride], Y[::stride, ::stride], Z[::stride, ::stride],
+            X_in[::stride, ::stride], Y_in[::stride, ::stride], Z_in[::stride, ::stride],
+            mask[::stride, ::stride])
+
 def write_contour_binary_stl(X, Y, Z, X_in, Y_in, Z_in, mask, shell_thickness_mm, filename):
     """ Writes an open-bottom, uniform thickness manifold shell directly to binary STL. """
     ny, nx = Z.shape
@@ -378,7 +400,9 @@ class ButteGeneratorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Geological Butte Parametric Engine - V15 Open-Shell Core")
-        self.root.geometry("1100x920")
+        # v15.4: compact side-by-side control rows freed up vertical space,
+        # so the window no longer needs 1000px of height
+        self.root.geometry("1100x780")
         
         # State matrices initialization
         self.X, self.Y, self.Z, self.X_in, self.Y_in, self.Z_in, self.mask = [None]*7
@@ -388,23 +412,61 @@ class ButteGeneratorGUI:
         ctrl_frame = ttk.LabelFrame(root, text=" Parametric Controls ", padding=15)
         ctrl_frame.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=10)
         
-        ttk.Label(ctrl_frame, text="Geological Style:").pack(anchor=tk.W, pady=2)
+        # v15.4: every parameter is one row -- prompt on the left, control on
+        # the right (grid column 1 stretches), so the panel is ~half as tall
+        params = ttk.Frame(ctrl_frame)
+        params.pack(fill=tk.X)
+        params.columnconfigure(1, weight=1)
+
+        row = 0
+        ttk.Label(params, text="Geological Style:").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=(2, 4))
         self.style_var = tk.StringVar(value="Sandstone")
-        style_menu = ttk.Combobox(ctrl_frame, textvariable=self.style_var, values=["Sandstone", "Shale", "Granite"], state="readonly")
-        style_menu.pack(fill=tk.X, pady=5)
+        style_menu = ttk.Combobox(params, textvariable=self.style_var, values=["Sandstone", "Shale", "Granite"], state="readonly")
+        style_menu.grid(row=row, column=1, sticky="ew", pady=(2, 4))
         style_menu.bind("<<ComboboxSelected>>", lambda e: self.invalidate_approval())
-        
-        # Configured Sliders - Shell Thickness & Flat Contour Brim Defaulting to exactly 5.0mm
-        self.width_slider = self.create_slider(ctrl_frame, "Target Width (mm):", 20, 230, 120)
-        self.height_slider = self.create_slider(ctrl_frame, "Target Height (mm):", 20, 230, 120)
-        self.strata_slider = self.create_slider(ctrl_frame, "Stratification Bedding Factor:", 0.5, 6.0, 2.5, resolution=0.1)
-        self.texture_bottom_slider = self.create_slider(ctrl_frame, "Texture - Bottom Strata:", 0.0, 4.0, 1.5, resolution=0.1)
-        self.texture_sides_slider = self.create_slider(ctrl_frame, "Texture - Mesa Sides:", 0.0, 4.0, 1.5, resolution=0.1)
-        self.texture_top_slider = self.create_slider(ctrl_frame, "Texture - Mesa Top:", 0.0, 4.0, 1.5, resolution=0.1)
-        self.side_top_slider = self.create_slider(ctrl_frame, "Side→Top Transition (more gradual →):", 0.2, 4.0, 1.5, resolution=0.1)
-        self.border_slider = self.create_slider(ctrl_frame, "Flat Contour Brim Width (mm):", 0.0, 25.0, 5.0, resolution=0.5)
-        self.shell_slider = self.create_slider(ctrl_frame, "Shell Thickness (mm, 0=Solid):", 0.0, 20.0, 5.0, resolution=0.5)
-        
+        row += 1
+
+        # v15.3: Noise seed control -- selects the fractal texture pattern.
+        # 55 is the historical default; any integer gives a new deterministic
+        # pattern (same seed => identical texture on every run).
+        ttk.Label(params, text="Noise Seed (texture pattern):").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=(6, 2))
+        self.seed_var = tk.IntVar(value=55)
+        self.seed_spin = tk.Spinbox(params, from_=0, to=99999, increment=1, width=10,
+                                     textvariable=self.seed_var, command=self.invalidate_approval)
+        self.seed_spin.grid(row=row, column=1, sticky="ew", pady=(6, 2))
+        row += 1
+        # Spinbox `command` only fires on the arrow buttons; catch typed edits too
+        self.seed_spin.bind("<KeyRelease>", lambda e: self.invalidate_approval())
+        self.seed_spin.bind("<FocusOut>", lambda e: self.invalidate_approval())
+
+        # v15.4: exact mm dimensions are plain number entries (typing a target
+        # size is faster than dragging); the continuous "feel" parameters stay
+        # sliders with a live value readout beside them
+        self.width_entry = self.add_entry_row(params, row, "Target Width (mm):", 20, 230, 120)
+        row += 1
+        self.height_entry = self.add_entry_row(params, row, "Target Height (mm):", 20, 230, 120)
+        row += 1
+        self.strata_slider = self.add_slider_row(params, row, "Stratification Bedding Factor:", 0.5, 6.0, 2.5, resolution=0.1)
+        row += 1
+        self.texture_bottom_slider = self.add_slider_row(params, row, "Texture - Bottom Strata:", 0.0, 4.0, 1.5, resolution=0.1)
+        row += 1
+        self.texture_sides_slider = self.add_slider_row(params, row, "Texture - Mesa Sides:", 0.0, 4.0, 1.5, resolution=0.1)
+        row += 1
+        self.texture_top_slider = self.add_slider_row(params, row, "Texture - Mesa Top:", 0.0, 4.0, 1.5, resolution=0.1)
+        row += 1
+        self.side_top_slider = self.add_slider_row(params, row, "Side→Top Transition (more gradual →):", 0.2, 4.0, 1.5, resolution=0.1)
+        row += 1
+        self.border_entry = self.add_entry_row(params, row, "Flat Contour Brim Width (mm):", 0.0, 25.0, 5.0, increment=0.5)
+        row += 1
+        self.shell_entry = self.add_entry_row(params, row, "Shell Thickness (mm, 0=Solid):", 0.0, 20.0, 5.0, increment=0.5)
+        row += 1
+
+        # v15.3: Mesh simplification factor -- applies to the exported STL only
+        # (preview/verify stay full detail). 1 = full detail (no change); N keeps
+        # every N-th grid node per axis, cutting facet count by ~N^2.
+        self.simplify_entry = self.add_entry_row(params, row, "Mesh Simplification (1=Full Detail):", 1, 8, 1)
+        row += 1
+
         # Trigger Operations
         ttk.Button(ctrl_frame, text="Verify & Approve Structural Model", command=self.update_plot_and_approve).pack(fill=tk.X, pady=15)
         self.export_btn = ttk.Button(ctrl_frame, text="Export Approved Binary STL", command=self.save_stl, state=tk.DISABLED)
@@ -426,12 +488,84 @@ class ButteGeneratorGUI:
         
         self.update_preview()
 
-    def create_slider(self, parent, label, min_v, max_v, default, resolution=1.0):
-        ttk.Label(parent, text=label).pack(anchor=tk.W, pady=(8, 2))
-        slider = tk.Scale(parent, from_=min_v, to=max_v, orient=tk.HORIZONTAL, resolution=resolution, length=220, command=lambda v: self.invalidate_approval())
+    # v15.4: side-by-side parameter rows (prompt | control) to halve panel height
+    def add_slider_row(self, parent, row, label, min_v, max_v, default, resolution=1.0):
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=(6, 2))
+        holder = ttk.Frame(parent)
+        holder.grid(row=row, column=1, sticky="ew", pady=(6, 2))
+        slider = tk.Scale(holder, from_=min_v, to=max_v, orient=tk.HORIZONTAL,
+                          resolution=resolution, length=140, showvalue=False)
         slider.set(default)
-        slider.pack(fill=tk.X, pady=(0, 5))
+        value_lbl = ttk.Label(holder, text=self._fmt_value(default, resolution), width=5)
+
+        def on_change(v, _lbl=value_lbl):
+            _lbl.config(text=self._fmt_value(float(v), resolution))
+            self.invalidate_approval()
+
+        slider.config(command=on_change)
+        slider.pack(side=tk.LEFT)
+        value_lbl.pack(side=tk.LEFT, padx=(6, 0))
         return slider
+
+    def add_entry_row(self, parent, row, label, min_v, max_v, default, increment=1.0):
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=(6, 2))
+        spin = tk.Spinbox(parent, from_=min_v, to=max_v, increment=increment, width=8,
+                          justify=tk.RIGHT, command=self.invalidate_approval)
+        spin.delete(0, tk.END)
+        spin.insert(0, str(default))
+        spin.grid(row=row, column=1, sticky="ew", pady=(6, 2))
+        # Spinbox `command` only fires on the arrow buttons; catch typed edits too
+        spin.bind("<KeyRelease>", lambda e: self.invalidate_approval())
+        spin.bind("<FocusOut>", lambda e: self.invalidate_approval())
+        return spin
+
+    @staticmethod
+    def _fmt_value(v, resolution):
+        v = float(v)
+        return f"{v:.0f}" if resolution >= 1.0 else f"{v:.1f}"
+
+    @staticmethod
+    def _set_entry_text(widget, value):
+        widget.delete(0, tk.END)
+        widget.insert(0, str(value))
+
+    def _read_float(self, widget, default, min_v, max_v):
+        # Safe read of an entry row: invalid/empty text falls back to the
+        # default, out-of-range values are clamped (the old sliders could not
+        # leave their range either)
+        try:
+            v = float(widget.get())
+            if not np.isfinite(v):
+                raise ValueError
+        except (tk.TclError, ValueError):
+            self._set_entry_text(widget, default)
+            return default
+        clamped = min(max(v, min_v), max_v)
+        if clamped != v:
+            self._set_entry_text(widget, clamped)
+            return clamped
+        return v
+
+    def get_simplify(self):
+        try:
+            v = int(float(self.simplify_entry.get()))
+        except (tk.TclError, ValueError):
+            v = 1
+        return min(max(v, 1), 8)
+
+    def get_params(self):
+        # Single validated read of every control, in engine argument order
+        style = self.style_var.get()
+        tw = self._read_float(self.width_entry, 120, 20, 230)
+        th = self._read_float(self.height_entry, 120, 20, 230)
+        sf = float(self.strata_slider.get())
+        tb = float(self.texture_bottom_slider.get())
+        ts = float(self.texture_sides_slider.get())
+        tt = float(self.texture_top_slider.get())
+        stt = float(self.side_top_slider.get())
+        bp = self._read_float(self.border_entry, 5.0, 0.0, 25.0)
+        st = self._read_float(self.shell_entry, 5.0, 0.0, 20.0)
+        return style, tw, th, sf, tb, ts, tt, stt, bp, st
 
     def invalidate_approval(self):
         self.is_model_approved = False
@@ -439,31 +573,28 @@ class ButteGeneratorGUI:
             self.export_btn.config(state=tk.DISABLED)
             self.status_lbl.config(text="Status: Settings Changed (Re-verify)", foreground="orange")
 
+    def get_seed(self):
+        # v15.3: safe read of the seed spinbox; falls back to the historical
+        # default if the entry holds a non-integer value
+        try:
+            return int(self.seed_var.get())
+        except tk.TclError:
+            self.seed_var.set(55)
+            return 55
+
     def update_preview(self):
-        style = self.style_var.get()
-        tw, th = float(self.width_slider.get()), float(self.height_slider.get())
-        sf = float(self.strata_slider.get())
-        tb, ts, tt = (float(self.texture_bottom_slider.get()), float(self.texture_sides_slider.get()),
-                      float(self.texture_top_slider.get()))
-        stt = float(self.side_top_slider.get())
-        bp, st = float(self.border_slider.get()), float(self.shell_slider.get())
+        style, tw, th, sf, tb, ts, tt, stt, bp, st = self.get_params()
 
         self.X, self.Y, self.Z, self.X_in, self.Y_in, self.Z_in, self.mask = generate_custom_border_butte(
-            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=60
+            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=60, seed=self.get_seed()
         )
         self.redraw_canvas(style, tw, th)
 
     def update_plot_and_approve(self):
-        style = self.style_var.get()
-        tw, th = float(self.width_slider.get()), float(self.height_slider.get())
-        sf = float(self.strata_slider.get())
-        tb, ts, tt = (float(self.texture_bottom_slider.get()), float(self.texture_sides_slider.get()),
-                      float(self.texture_top_slider.get()))
-        stt = float(self.side_top_slider.get())
-        bp, st = float(self.border_slider.get()), float(self.shell_slider.get())
+        style, tw, th, sf, tb, ts, tt, stt, bp, st = self.get_params()
 
         self.X, self.Y, self.Z, self.X_in, self.Y_in, self.Z_in, self.mask = generate_custom_border_butte(
-            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=80
+            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=80, seed=self.get_seed()
         )
         self.redraw_canvas(style, tw, th)
         
@@ -493,21 +624,27 @@ class ButteGeneratorGUI:
             messagebox.showerror("Export Locked", "Approve the structural model inside the interface first.")
             return
             
-        default_name = f"open_shell_v15_butte_{self.style_var.get().lower()}.stl"
+        #default_name = f"open_shell_v15_butte_{self.style_var.get().lower()}.stl"
+        default_name = f"{self.style_var.get().lower()}_seed_{self.seed_var.get()}.stl"
         file_path = filedialog.asksaveasfilename(defaultextension=".stl", 
                                                 filetypes=[("Stereolithography Mesh", "*.stl")],
                                                 initialfile=default_name)
         if file_path:
-            st_val = float(self.shell_slider.get())
+            style, tw, th, sf, tb, ts, tt, stt, bp, st_val = self.get_params()
             X_hi, Y_hi, Z_hi, X_in_hi, Y_in_hi, Z_in_hi, mask_hi = generate_custom_border_butte(
-                self.style_var.get(), float(self.width_slider.get()), float(self.height_slider.get()), 
-                float(self.strata_slider.get()), float(self.texture_bottom_slider.get()),
-                float(self.texture_sides_slider.get()), float(self.texture_top_slider.get()),
-                float(self.side_top_slider.get()),
-                float(self.border_slider.get()), st_val, resolution=130
+                style, tw, th, sf, tb, ts, tt, stt, bp, st_val, resolution=130, seed=self.get_seed()
             )
+            # v15.3: apply the UI simplification factor to the exported mesh only
+            # (preview/verify stay full detail). 1 = no change.
+            simplify_factor = self.get_simplify()
+            if simplify_factor > 1:
+                X_hi, Y_hi, Z_hi, X_in_hi, Y_in_hi, Z_in_hi, mask_hi = simplify_grid_mesh(
+                    X_hi, Y_hi, Z_hi, X_in_hi, Y_in_hi, Z_in_hi, mask_hi, simplify_factor
+                )
             write_contour_binary_stl(X_hi, Y_hi, Z_hi, X_in_hi, Y_in_hi, Z_in_hi, mask_hi, st_val, file_path)
-            messagebox.showinfo("Export Successful", f"Manifold Open-Bottom STL mesh written to:\n{file_path}")
+            detail_note = f" (simplified {simplify_factor}x)" if simplify_factor > 1 else ""
+            messagebox.showinfo("Export Successful",
+                                f"Manifold Open-Bottom STL mesh{detail_note} written to:\n{file_path}")
 
 if __name__ == '__main__':
     root = tk.Tk()
