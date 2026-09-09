@@ -1,0 +1,14 @@
+{
+  "style": "Granite",
+  "seed": 60,
+  "target_width_mm": 140.0,
+  "target_height_mm": 190.0,
+  "stratification_factor": 2.5,
+  "texture_bottom": 0.2,
+  "texture_sides": 1.5,
+  "texture_top": 0.2,
+  "side_top_transition": 8.0,
+  "border_padding_mm": 2.0,
+  "shell_thickness_mm": 4.0,
+  "mesh_simplification": 2
+}
