@@ -1,0 +1,26 @@
+{
+    "fileFormatVersion": "1",
+    "parameterSets": {
+        "New set 1": {
+            "base_radius": "60",
+            "bezier_P1": "[0, 0.7]",
+            "bezier_P2": "[0.1, 0.3]",
+            "center_shift_x": "3",
+            "center_shift_y": "-3",
+            "corner_rounding_factor": "0.20000000000000001",
+            "fragments": "120",
+            "layers": "14",
+            "max_height": "190",
+            "octaves": "3",
+            "side_xy_amplitude": "6",
+            "skew_factor_x": "1.2",
+            "skew_factor_y": "1.1000000000000001",
+            "strata_frequency": "0.80000000000000004",
+            "strata_intensity": "4",
+            "top_plateau_ratio": "0.69999999999999996",
+            "top_z_amplitude": "4",
+            "twist_degrees": "7",
+            "wall_thickness": "4"
+        }
+    }
+}

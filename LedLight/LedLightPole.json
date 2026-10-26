@@ -1,0 +1,22 @@
+{
+    "fileFormatVersion": "1",
+    "parameterSets": {
+        "New set 1": {
+            "$fn": "180",
+            "base_height": "20",
+            "base_od": "88",
+            "base_wall": "4",
+            "block_depth": "6",
+            "block_type": "square",
+            "block_width": "45",
+            "led_depth": "2",
+            "led_per_side": "13",
+            "led_width": "6.25",
+            "one_led_length": "16.5",
+            "part": "base",
+            "strip_depth": "0.69999999999999996",
+            "strip_width": "12.199999999999999",
+            "t_block_width": "60"
+        }
+    }
+}

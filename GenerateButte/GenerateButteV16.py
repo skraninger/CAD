@@ -18,18 +18,21 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 # ==========================================
 def generate_custom_border_butte(style, target_width_mm, target_height_mm,
                                  stratification_factor, texture_bottom, texture_sides, texture_top,
-                                 side_top_transition, border_padding_mm, shell_thickness_mm, resolution=100, seed=55):
+                                 side_top_transition, border_padding_mm, shell_thickness_mm,
+                                 resolution=100, seed=55, zone_blend=1.0):
     """
     Generates a freestanding butte terrain (an inverted bowl) with adjustable
     border padding and true 3D normal-vector hollowing.
 
     V16 changes vs V15:
       * The mesa TOP is strongly attenuated (a whisper of relief) while the
-        sides and bottom keep their full texture. This is done by scaling the
-        top-zone noise contribution by TOP_ATTENUATION.
-      * Everything else (radial framing, sigmoid+shoulder profile, noise
-        octaves, styles, masking, brim dilation, mm rescaling, normal-offset
-        hollowing) is unchanged so the sides/bottom look is preserved.
+        sides and bottom keep their full texture (TOP_ATTENUATION).
+      * SMOOTH ZONE HAND-OFFS: the per-zone textures are now each multiplied by a
+        smoothstep zone weight that reaches 0 at the zone boundary, and the side
+        stratification pattern is continuous (no hard step). This removes the
+        +z spikes that previously appeared where the sides met the top and where
+        the base met the sides. `zone_blend` widens (>1) or tightens (<1) every
+        hand-off ramp so the bottom->side->top transitions are always smooth.
     """
     # V16: the flat mesa cap keeps only a whisper of the stochastic relief.
     # Sides and bottom are untouched (their zone weights keep full amplitude).
@@ -67,44 +70,55 @@ def generate_custom_border_butte(style, target_width_mm, target_height_mm,
         phi_y = np.random.uniform(0, 2 * np.pi)
         noise += a * np.sin(f * X + phi_x) * np.cos(f * Y + phi_y)
 
-    cliff_envelope = np.exp(-((R_adjusted - 10.0) / 2.5)**2)
-
-    # Zone-based texture weighting: bottom / sides / top
+    # Zone-based texture weighting: bottom / sides / top.
+    # Every hand-off is a smoothstep that reaches 0 at the zone boundary, so the
+    # per-zone textures blend continuously and can never poke through as a spike
+    # where two zones meet. `zone_blend` scales the width of every ramp.
     grid_step = 30.0 / (resolution - 1)
     gz_y, gz_x = np.gradient(Z_base, grid_step, grid_step)
     slope_mag = np.sqrt(gz_x**2 + gz_y**2)
     slope_norm = slope_mag / (np.max(slope_mag) + 1e-9)
     elev_norm = Z_base / (np.max(Z_base) + 1e-9)
 
-    t_top = np.clip((elev_norm - 0.65) / (0.90 - 0.65), 0.0, 1.0)
-    elev_ramp = t_top * t_top * (3.0 - 2.0 * t_top)
-    t_flat = np.clip((0.35 - slope_norm) / (0.35 - 0.10), 0.0, 1.0)
-    flat_ramp = t_flat * t_flat * (3.0 - 2.0 * t_flat)
+    def _sstep(t):
+        t = np.clip(t, 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    b = max(float(zone_blend), 1e-3)
+
+    # TOP: high elevation AND a flat surface.
+    t_top = (elev_norm - 0.65) / ((0.90 - 0.65) * b)
+    elev_ramp = _sstep(t_top)
+    t_flat = (0.35 - slope_norm) / ((0.35 - 0.10) * b)
+    flat_ramp = _sstep(t_flat)
     w_top = elev_ramp * flat_ramp
 
-    t_side = np.clip((slope_norm - 0.35) / (0.75 - 0.35), 0.0, 1.0)
-    w_side = t_side * t_side * (3.0 - 2.0 * t_side) * (1.0 - w_top)
+    # SIDE: steep surface, masked out wherever the top is active.
+    t_side = (slope_norm - 0.35) / ((0.75 - 0.35) * b)
+    w_side = _sstep(t_side) * (1.0 - w_top)
 
+    # BOTTOM: residual weight -- keeps the partition of unity exact.
     w_bottom = np.clip(1.0 - w_top - w_side, 0.0, 1.0)
 
-    # V16: attenuate the TOP noise only (sides/bottom keep full amplitude).
-    texture_field = (w_bottom * texture_bottom + w_side * texture_sides
-                     + w_top * texture_top * TOP_ATTENUATION)
-    noise_layer = noise * texture_field
-
-    # Apply Geological Style Switcher
+    # Continuous side stratification pattern (no hard step -> no vertical spikes).
     if style == 'Sandstone':
-        strata = np.sin(stratification_factor * np.pi * Z_base)
-        strata = np.where(strata > 0.15, 0.35, -0.2)
-        Z = Z_base + (strata * cliff_envelope) + noise_layer
+        phase = np.sin(stratification_factor * np.pi * Z_base)
+        side_pattern = 0.55 * np.tanh(4.0 * (phase - 0.15))
     elif style == 'Shale':
-        strata = 0.12 * np.sin(stratification_factor * 2.5 * np.pi * Z_base)
-        Z = Z_base + (strata * cliff_envelope) + noise_layer
+        side_pattern = 0.25 * np.sin(stratification_factor * 2.5 * np.pi * Z_base)
     elif style == 'Granite':
         joints = 0.4 * np.sin(0.3 * np.pi * X) * np.cos(0.3 * np.pi * Y)
-        Z = Z_base + np.floor(joints * stratification_factor) / stratification_factor + noise_layer
+        side_pattern = (np.floor(joints * stratification_factor) / stratification_factor - 0.5)
     else:
-        Z = Z_base + noise_layer
+        side_pattern = np.zeros_like(X)
+
+    # Per-zone detail. Each zone slider scales its own relief; the mesa top is
+    # attenuated to a whisper (V16). Sides get general relief + continuous ledges,
+    # both gated by w_side so they fade smoothly at BOTH the top and bottom ends.
+    Z = (Z_base
+         + w_bottom * texture_bottom * noise
+         + w_side * texture_sides * (noise + side_pattern)
+         + w_top * texture_top * TOP_ATTENUATION * noise)
 
     Z = np.clip(Z, 0, None)
 
@@ -341,6 +355,8 @@ class ButteGeneratorGUI:
         row += 1
         self.side_top_slider = self.add_slider_row(params, row, "Side→Top Transition (more gradual →):", 0.2, 8.0, 1.5, resolution=0.1)
         row += 1
+        self.zone_blend_slider = self.add_slider_row(params, row, "Zone Blend (wider = smoother hand-off):", 0.5, 3.0, 1.0, resolution=0.1)
+        row += 1
         self.border_entry = self.add_entry_row(params, row, "Flat Contour Brim Width (mm):", 0.0, 25.0, 5.0, increment=0.5)
         row += 1
         self.shell_entry = self.add_entry_row(params, row, "Shell Thickness (mm, 0=Solid):", 0.0, 20.0, 5.0, increment=0.5)
@@ -448,10 +464,11 @@ class ButteGeneratorGUI:
         ts = float(self.texture_sides_slider.get())
         tt = float(self.texture_top_slider.get())
         stt = float(self.side_top_slider.get())
+        zb = float(self.zone_blend_slider.get())
         bp = self._read_float(self.border_entry, 5.0, 0.0, 25.0)
         st = self._read_float(self.shell_entry, 5.0, 0.0, 20.0)
         res = self.get_resolution()
-        return style, tw, th, sf, tb, ts, tt, stt, bp, st, res
+        return style, tw, th, sf, tb, ts, tt, stt, zb, bp, st, res
 
     def invalidate_approval(self):
         self.is_model_approved = False
@@ -467,7 +484,7 @@ class ButteGeneratorGUI:
             return 55
 
     def get_parameter_dict(self):
-        style, tw, th, sf, tb, ts, tt, stt, bp, st, res = self.get_params()
+        style, tw, th, sf, tb, ts, tt, stt, zb, bp, st, res = self.get_params()
         return {
             "style": style,
             "seed": self.get_seed(),
@@ -478,6 +495,7 @@ class ButteGeneratorGUI:
             "texture_sides": ts,
             "texture_top": tt,
             "side_top_transition": stt,
+            "zone_blend": zb,
             "border_padding_mm": bp,
             "shell_thickness_mm": st,
             "mesh_resolution": res,
@@ -539,6 +557,7 @@ class ButteGeneratorGUI:
             (self.texture_sides_slider,  "texture_sides",           1.5,  0.0,   4.0),
             (self.texture_top_slider,    "texture_top",             1.5,  0.0,   4.0),
             (self.side_top_slider,       "side_top_transition",     1.5,  0.2,   8.0),
+            (self.zone_blend_slider,     "zone_blend",              1.0,  0.5,   3.0),
             (self.border_entry,          "border_padding_mm",       5.0,  0.0,  25.0),
             (self.shell_entry,           "shell_thickness_mm",      5.0,  0.0,  20.0),
         ]
@@ -584,16 +603,16 @@ class ButteGeneratorGUI:
         return True
 
     def update_preview(self):
-        style, tw, th, sf, tb, ts, tt, stt, bp, st, res = self.get_params()
+        style, tw, th, sf, tb, ts, tt, stt, zb, bp, st, res = self.get_params()
         self.X, self.Y, self.Z, self.X_in, self.Y_in, self.Z_in, self.mask = generate_custom_border_butte(
-            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=res, seed=self.get_seed()
+            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=res, seed=self.get_seed(), zone_blend=zb
         )
         self.redraw_canvas(style, tw, th)
 
     def update_plot_and_approve(self):
-        style, tw, th, sf, tb, ts, tt, stt, bp, st, res = self.get_params()
+        style, tw, th, sf, tb, ts, tt, stt, zb, bp, st, res = self.get_params()
         self.X, self.Y, self.Z, self.X_in, self.Y_in, self.Z_in, self.mask = generate_custom_border_butte(
-            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=res, seed=self.get_seed()
+            style, tw, th, sf, tb, ts, tt, stt, bp, st, resolution=res, seed=self.get_seed(), zone_blend=zb
         )
         self.redraw_canvas(style, tw, th)
 
@@ -625,9 +644,9 @@ class ButteGeneratorGUI:
                                                 filetypes=[("Stereolithography Mesh", "*.stl")],
                                                 initialfile=default_name)
         if file_path:
-            style, tw, th, sf, tb, ts, tt, stt, bp, st_val, res = self.get_params()
+            style, tw, th, sf, tb, ts, tt, stt, zb, bp, st_val, res = self.get_params()
             X_hi, Y_hi, Z_hi, X_in_hi, Y_in_hi, Z_in_hi, mask_hi = generate_custom_border_butte(
-                style, tw, th, sf, tb, ts, tt, stt, bp, st_val, resolution=res, seed=self.get_seed()
+                style, tw, th, sf, tb, ts, tt, stt, bp, st_val, resolution=res, seed=self.get_seed(), zone_blend=zb
             )
             write_contour_binary_stl(X_hi, Y_hi, Z_hi, X_in_hi, Y_in_hi, Z_in_hi, mask_hi, st_val, file_path)
             messagebox.showinfo("Export Successful",
